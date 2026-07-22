@@ -4,6 +4,7 @@ import { registerSW } from 'virtual:pwa-register';
 import App from './App';
 import { AuthStoreProvider } from './store/AuthStore';
 import { AppStoreProvider } from './store/AppStore';
+import { CalendarStoreProvider } from './store/CalendarStore';
 import './styles.css';
 
 // Saat development, jangan biarkan service worker build lama mencegat localhost
@@ -23,7 +24,9 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <AuthStoreProvider>
       <AppStoreProvider>
-        <App />
+        <CalendarStoreProvider>
+          <App />
+        </CalendarStoreProvider>
       </AppStoreProvider>
     </AuthStoreProvider>
   </StrictMode>

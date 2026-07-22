@@ -1,4 +1,4 @@
-export type PageId = 'today' | 'tasks' | 'routines' | 'notes' | 'finance' | 'review';
+export type PageId = 'today' | 'calendar' | 'tasks' | 'routines' | 'notes' | 'finance' | 'review';
 
 export type RecurrenceFrequency = 'daily' | 'weekly' | 'monthly';
 export type RecurrenceMode = 'fixed_schedule' | 'after_completion';
@@ -145,4 +145,47 @@ export interface AppData {
   transactions: Transaction[];
   budgets: Budget[];
   reviews: WeeklyReview[];
+}
+
+
+export interface GoogleCalendarConnectionStatus {
+  connected: boolean;
+  accountEmail?: string;
+  connectedAt?: string;
+  lastSyncedAt?: string;
+  syncStatus?: 'connected' | 'reauthorization_required' | 'error';
+  syncError?: string;
+}
+
+export interface GoogleCalendarInfo {
+  id: string;
+  googleCalendarId: string;
+  summary: string;
+  description?: string;
+  timeZone?: string;
+  backgroundColor?: string;
+  foregroundColor?: string;
+  accessRole?: string;
+  primary: boolean;
+  isVisible: boolean;
+  lastSyncedAt?: string;
+}
+
+export interface GoogleCalendarEvent {
+  id: string;
+  calendarId: string;
+  googleEventId: string;
+  title: string;
+  description?: string;
+  location?: string;
+  htmlLink?: string;
+  conferenceLink?: string;
+  startAt: string;
+  endAt: string;
+  allDay: boolean;
+  status: string;
+  organizerEmail?: string;
+  attendeesCount: number;
+  recurringEventId?: string;
+  updatedAtGoogle?: string;
 }

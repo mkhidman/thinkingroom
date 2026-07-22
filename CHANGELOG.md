@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.0 — Google Calendar Read-only
+
+- Menambahkan halaman Jadwal pada navigasi utama dan command palette.
+- Menampilkan agenda Google Calendar pada Hari Ini.
+- OAuth Google diproses melalui Supabase Edge Functions, bukan browser.
+- Memakai scope granular `calendar.calendarlist.readonly` dan `calendar.events.readonly`.
+- Refresh token dienkripsi AES-256-GCM dan tidak dapat dibaca role frontend.
+- Menambahkan pemilihan kalender, warna sumber, agenda Hari Ini/Minggu/30 hari, lokasi, link event, dan link meeting.
+- Menambahkan incremental synchronization untuk CalendarList dan Events.
+- Menangani Google HTTP 410 dengan full resync aman.
+- Menambahkan cache agenda per pengguna untuk tampilan offline.
+- Menambahkan migration, RLS, Edge Function config, dan panduan setup Google Cloud/Supabase.
+- Tidak menambahkan dependency npm baru.
+
 ## 0.4.0 — Deadline, CRUD, dan Reminder Lokal
 
 - Menghapus `src/data/seed.ts` dan seluruh fallback data contoh.

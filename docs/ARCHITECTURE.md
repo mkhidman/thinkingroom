@@ -1,4 +1,4 @@
-# Arsitektur Ruang 0.4.0
+# Arsitektur Ruang 0.5.0
 
 ## 1. Prinsip produk
 
@@ -6,16 +6,17 @@
 Tangkap → Tata → Kerjakan → Catat hasil → Review
 ```
 
-Hari Ini menampilkan tindakan yang relevan. Tugas, habit, ibadah, dan keuangan tidak digabung menjadi satu skor kehidupan.
+Hari Ini menampilkan tindakan serta agenda yang relevan. Tugas, kalender, habit, ibadah, dan keuangan tidak digabung menjadi satu skor kehidupan.
 
 ## 2. Navigasi
 
 1. Hari Ini
-2. Tugas & Proyek
-3. Rutinitas
-4. Catatan
-5. Keuangan
-6. Review
+2. Jadwal
+3. Tugas & Proyek
+4. Rutinitas
+5. Catatan
+6. Keuangan
+7. Review
 
 Universal Inbox diwujudkan sebagai Tangkap Cepat global. Backup dan pengaturan reminder menjadi utilitas global, bukan menu kerja utama.
 
@@ -136,7 +137,32 @@ saldo awal
 
 Transfer tidak dihitung sebagai pemasukan/pengeluaran. Tagihan menggunakan task dengan label `tagihan`, sehingga dapat memiliki jadwal, deadline, recurrence, dan reminder yang sama dengan domain tugas.
 
-## 11. Security boundary
+
+## 11. Google Calendar read-only
+
+Google Calendar memakai boundary terpisah dari snapshot `app_state`:
+
+```text
+Browser dengan Supabase JWT
+→ Edge Function membuat OAuth URL
+→ Google callback ke Edge Function publik
+→ state sekali pakai memetakan callback ke user
+→ refresh token dienkripsi AES-256-GCM
+→ Edge Function sync CalendarList dan Events
+→ cache relational Supabase
+→ browser membaca cache dengan RLS
+```
+
+Scope yang diminta hanya:
+
+- `calendar.calendarlist.readonly`;
+- `calendar.events.readonly`.
+
+Kalender utama aktif secara default. Kalender lain diaktifkan pengguna. Initial event sync dibatasi 30 hari ke belakang dan 365 hari ke depan. Setelah itu `nextSyncToken` digunakan. HTTP 410 dari Google menghapus token terkait dan memicu full sync ulang.
+
+Token tidak masuk ke frontend, localStorage, Vercel frontend environment variables, atau `app_state`. Cache browser hanya berisi metadata kalender dan event untuk pengalaman offline.
+
+## 12. Security boundary
 
 - Auth memakai Supabase email/password.
 - Frontend hanya memakai Publishable/Anon Key.
@@ -144,10 +170,11 @@ Transfer tidak dihitung sebagai pemasukan/pengeluaran. Tagihan menggunakan task 
 - RPC revision control memakai user dari session, bukan input client.
 - Secret/service-role key tidak boleh berada pada variabel `VITE_*`.
 
-## 12. Arah berikutnya
+## 13. Arah berikutnya
 
 1. Web Push/server scheduler agar reminder dapat terkirim saat PWA benar-benar ditutup.
 2. Jadwal sholat otomatis berdasarkan lokasi dan metode perhitungan.
 3. Audit log ringan untuk transaksi dan penghapusan sensitif.
 4. Migrasi per-domain dari snapshot JSONB jika payload membesar atau kolaborasi dibutuhkan.
-5. Attachment dan integrasi kalender.
+5. Google Calendar time blocking dan two-way sync setelah read-only stabil.
+6. Webhook/cron untuk sinkronisasi kalender saat aplikasi tidak dibuka.

@@ -10,6 +10,7 @@ import { DataManagementModal } from './components/DataManagementModal';
 import { SyncConflictModal } from './components/SyncConflictModal';
 import { NotificationSettingsModal } from './components/NotificationSettingsModal';
 import { TodayPage } from './pages/TodayPage';
+import { CalendarPage } from './pages/CalendarPage';
 import { TasksPage } from './pages/TasksPage';
 import { RoutinesPage } from './pages/RoutinesPage';
 import { NotesPage } from './pages/NotesPage';
@@ -28,6 +29,7 @@ import {
 
 const pageMeta: Record<PageId, { title: string; subtitle: string }> = {
   today: { title: 'Hari Ini', subtitle: 'Lihat yang perlu dilakukan tanpa membuka semua tracker.' },
+  calendar: { title: 'Jadwal', subtitle: 'Agenda Google Calendar yang dipilih, dibaca secara read-only.' },
   tasks: { title: 'Tugas & Proyek', subtitle: 'Tindakan, recurrence, waiting list, dan konteks proyek.' },
   routines: { title: 'Rutinitas', subtitle: 'Habit dan ibadah tetap terpisah, tetapi mudah dilihat bersama.' },
   notes: { title: 'Catatan', subtitle: 'Catatan cepat, ide, dan keputusan yang terhubung dengan proyek.' },
@@ -38,7 +40,7 @@ const pageMeta: Record<PageId, { title: string; subtitle: string }> = {
 export default function App() {
   const auth = useAuthStore();
   const store = useAppStore();
-  const [page, setPage] = useState<PageId>('today');
+  const [page, setPage] = useState<PageId>(() => new URLSearchParams(window.location.search).get('open') === 'calendar' ? 'calendar' : 'today');
   const [quickCaptureOpen, setQuickCaptureOpen] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -104,6 +106,7 @@ export default function App() {
   }, [store.data, reminderSettings]);
 
   const pageComponent = useMemo(() => {
+    if (page === 'calendar') return <CalendarPage />;
     if (page === 'tasks') return <TasksPage />;
     if (page === 'routines') return <RoutinesPage />;
     if (page === 'notes') return <NotesPage />;

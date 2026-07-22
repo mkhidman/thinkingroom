@@ -10,7 +10,7 @@ export default defineConfig({
             manifest: {
                 name: 'Ruang — Personal Life OS',
                 short_name: 'Ruang',
-                description: 'Satu ruang untuk tugas, rutinitas, ibadah, catatan, dan keuangan pribadi.',
+                description: 'Satu ruang untuk tugas, jadwal, rutinitas, ibadah, catatan, dan keuangan pribadi.',
                 theme_color: '#005BAC',
                 background_color: '#F4F7FB',
                 display: 'standalone',

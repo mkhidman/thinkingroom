@@ -1,14 +1,15 @@
 # Ruang — Personal Life OS
 
-Ruang adalah web app/PWA pribadi untuk menghimpun tugas, proyek, habit, tracker sholat, catatan, review mingguan, dan keuangan dalam satu alur.
+Ruang adalah web app/PWA pribadi untuk menghimpun tugas, proyek, jadwal Google Calendar, habit, tracker sholat, catatan, review mingguan, dan keuangan dalam satu alur.
 
-Versi saat ini: **0.4.0 — Deadline, CRUD, dan Reminder Lokal**.
+Versi saat ini: **0.5.0 — Google Calendar Read-only**.
 
 ## Yang sudah tersedia
 
 - Tampilan responsif desktop dan mobile.
 - PWA dengan offline application shell dasar.
-- Hari Ini sebagai pusat tindakan.
+- Hari Ini sebagai pusat tindakan dan agenda.
+- Google Calendar read-only: OAuth server-side, pemilihan kalender, agenda, incremental sync, dan cache offline.
 - Tugas dengan jadwal pengerjaan, deadline terpisah, prioritas, estimasi, label, status, dan recurring custom.
 - Tracking tugas terlambat berdasarkan deadline, bukan tanggal jadwal.
 - Pengelolaan proyek: tambah, edit, status, warna, deskripsi, dan hapus aman.
@@ -70,6 +71,18 @@ VITE_SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
 6. Restart `npm run dev`.
 
 Petunjuk lengkap tersedia di `docs/SUPABASE-SETUP.md`.
+
+## Mengaktifkan Google Calendar
+
+Fase 5 membutuhkan migration dan tiga Supabase Edge Functions. Credential Google **tidak** dimasukkan ke `.env.local` frontend.
+
+1. Jalankan `supabase/migrations/phase-5-google-calendar-readonly.sql`.
+2. Aktifkan Google Calendar API dan buat OAuth Web Client.
+3. Tambahkan Google Client ID, Client Secret, redirect URI, allowed origins, dan encryption key sebagai Supabase Edge Function Secrets.
+4. Deploy `google-calendar-connect`, `google-calendar-callback`, dan `google-calendar-sync`.
+5. Deploy ulang frontend, lalu buka menu **Jadwal**.
+
+Instruksi rinci tersedia di `docs/GOOGLE-CALENDAR-SETUP.md`.
 
 > Jangan memasukkan `service_role` atau secret key ke variabel `VITE_*`. Gunakan Publishable/Anon Key yang dilindungi RLS.
 
@@ -153,30 +166,32 @@ src/
 ├── components/          # layout, form CRUD, auth, reminder, backup, conflict
 ├── data/
 │   └── empty.ts         # struktur awal kosong, tanpa seed dummy
-├── lib/                 # recurrence, reminder, finance, backup, storage, Supabase
-├── pages/               # enam area utama
-├── store/               # AuthStore dan AppStore
+├── lib/                 # recurrence, reminder, finance, backup, Supabase, Google Calendar
+├── pages/               # tujuh area utama termasuk Jadwal
+├── store/               # AuthStore, AppStore, dan CalendarStore
 ├── App.tsx
 ├── main.tsx
 └── styles.css
 supabase/
 ├── schema.sql
+├── config.toml
+├── functions/           # OAuth callback, connect, sync, shared helpers
 └── migrations/
-    └── phase-3-revision-backups.sql
+    ├── phase-3-revision-backups.sql
+    └── phase-5-google-calendar-readonly.sql
 scripts/
 └── verify-local-ready.mjs
 ```
 
-## Upgrade dari 0.3.1
+## Upgrade dari 0.4.0
 
-Tidak ada migration database baru karena data aplikasi masih disimpan sebagai JSONB pada `public.app_state`.
+1. Ganti source dengan versi 0.5.0 dan salin kembali `.env.local`.
+2. Jalankan migration `phase-5-google-calendar-readonly.sql`.
+3. Konfigurasikan Google Cloud OAuth dan Supabase Edge Function Secrets.
+4. Deploy tiga Edge Function Fase 5.
+5. Jalankan `npm install`, `npm run build`, lalu deploy ulang frontend.
 
-1. Ganti source dengan versi 0.4.0.
-2. Salin kembali `.env.local`.
-3. Jalankan `npm install` dan `npm run dev`.
-4. Gunakan **Hapus seluruh data** sekali jika snapshot Supabase lama masih berisi dummy.
-
-Field `deadlineAt` dan `reminderAt` bersifat opsional, sehingga data lama tetap dapat dibaca.
+Data inti Fase 4 tetap kompatibel karena model `app_state` tidak diubah. Data kalender disimpan pada tabel terpisah.
 
 ## Batas fase ini
 
@@ -184,7 +199,9 @@ Field `deadlineAt` dan `reminderAt` bersifat opsional, sehingga data lama tetap 
 - Reminder belum memakai server push ketika aplikasi benar-benar ditutup.
 - Belum ada reset password di dalam UI.
 - Belum ada jadwal sholat otomatis berdasarkan lokasi.
+- Google Calendar masih read-only; belum ada time blocking atau two-way sync.
+- Sinkronisasi Google berjalan saat aplikasi dibuka/manual; belum memakai webhook atau cron.
 - Belum ada attachment, audit log keuangan, dan kolaborasi keluarga.
 - Belum ada import Money Lover atau mutasi bank.
 
-Lihat `docs/ARCHITECTURE.md` dan `docs/PHASE-4-QA.md` untuk keputusan teknis serta hasil pemeriksaan fase ini.
+Lihat `docs/ARCHITECTURE.md`, `docs/GOOGLE-CALENDAR-SETUP.md`, dan `docs/PHASE-5-QA.md`.

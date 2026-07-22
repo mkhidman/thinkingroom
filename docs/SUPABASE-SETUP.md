@@ -150,3 +150,21 @@ Cache lokal hanya digunakan ketika browser benar-benar offline. Pada akun cloud 
 npm run verify:local
 npm install --registry=https://registry.npmjs.org/
 ```
+
+## Fase 5A — Google Calendar
+
+Core Supabase `app_state` tetap sama. Integrasi Google Calendar membutuhkan migration, Google Cloud OAuth, dan Supabase Edge Functions tambahan.
+
+Jalankan:
+
+```text
+supabase/migrations/phase-5-google-calendar-readonly.sql
+```
+
+Kemudian ikuti seluruh langkah di:
+
+```text
+docs/GOOGLE-CALENDAR-SETUP.md
+```
+
+Google Client Secret dan token encryption key harus disimpan sebagai **Supabase Edge Function Secrets**, bukan `.env.local` frontend atau Vercel environment variable dengan prefix `VITE_`.

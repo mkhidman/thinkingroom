@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import {
   CalendarCheck2,
+  CalendarDays,
   CheckSquare2,
   CircleDollarSign,
   NotebookPen,
@@ -11,6 +12,7 @@ import {
 } from 'lucide-react';
 import type { PageId } from '../types';
 import { useAppStore } from '../store/AppStore';
+import { useCalendarStore } from '../store/CalendarStore';
 
 interface CommandPaletteProps {
   open: boolean;
@@ -21,6 +23,7 @@ interface CommandPaletteProps {
 
 const pages: Array<{ page: PageId; label: string; icon: typeof Search }> = [
   { page: 'today', label: 'Buka Hari Ini', icon: CalendarCheck2 },
+  { page: 'calendar', label: 'Buka Jadwal', icon: CalendarDays },
   { page: 'tasks', label: 'Buka Tugas & Proyek', icon: CheckSquare2 },
   { page: 'routines', label: 'Buka Rutinitas', icon: Target },
   { page: 'notes', label: 'Buka Catatan', icon: NotebookPen },
@@ -30,6 +33,7 @@ const pages: Array<{ page: PageId; label: string; icon: typeof Search }> = [
 
 export const CommandPalette = ({ open, onClose, onNavigate, onQuickCapture }: CommandPaletteProps) => {
   const { data } = useAppStore();
+  const calendarStore = useCalendarStore();
   const [query, setQuery] = useState('');
 
   const results = useMemo(() => {
@@ -43,12 +47,16 @@ export const CommandPalette = ({ open, onClose, onNavigate, onQuickCapture }: Co
       .filter((item) => `${item.title} ${item.content}`.toLowerCase().includes(normalized))
       .slice(0, 4)
       .map((item) => ({ id: item.id, label: item.title, type: 'Catatan', page: 'notes' as PageId }));
+    const calendarResults = calendarStore.events
+      .filter((item) => `${item.title} ${item.description ?? ''} ${item.location ?? ''}`.toLowerCase().includes(normalized))
+      .slice(0, 4)
+      .map((item) => ({ id: item.id, label: item.title, type: 'Jadwal', page: 'calendar' as PageId }));
     const transactionResults = data.transactions
       .filter((item) => `${item.note} ${item.category}`.toLowerCase().includes(normalized))
       .slice(0, 4)
       .map((item) => ({ id: item.id, label: item.note, type: 'Transaksi', page: 'finance' as PageId }));
-    return [...taskResults, ...noteResults, ...transactionResults].slice(0, 8);
-  }, [query, data]);
+    return [...taskResults, ...calendarResults, ...noteResults, ...transactionResults].slice(0, 8);
+  }, [query, data, calendarStore.events]);
 
   if (!open) return null;
 
@@ -61,7 +69,7 @@ export const CommandPalette = ({ open, onClose, onNavigate, onQuickCapture }: Co
             autoFocus
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Cari tugas, catatan, transaksi, atau halaman…"
+            placeholder="Cari tugas, jadwal, catatan, transaksi, atau halaman…"
           />
           <kbd>Esc</kbd>
         </div>

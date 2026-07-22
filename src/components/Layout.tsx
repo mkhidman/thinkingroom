@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import {
   Bell,
   CalendarCheck2,
+  CalendarDays,
   CheckSquare2,
   CircleDollarSign,
   Cloud,
@@ -23,6 +24,7 @@ import type { SyncStatus } from '../store/AppStore';
 
 const navItems: Array<{ id: PageId; label: string; icon: typeof CalendarCheck2 }> = [
   { id: 'today', label: 'Hari Ini', icon: CalendarCheck2 },
+  { id: 'calendar', label: 'Jadwal', icon: CalendarDays },
   { id: 'tasks', label: 'Tugas', icon: CheckSquare2 },
   { id: 'routines', label: 'Rutinitas', icon: Target },
   { id: 'notes', label: 'Catatan', icon: NotebookPen },

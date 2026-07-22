@@ -2,9 +2,10 @@ import { format, isBefore, isSameDay, parseISO, startOfDay } from 'date-fns';
 import { id } from 'date-fns/locale';
 import {
   ArrowRight,
+  CalendarDays,
   CheckCircle2,
   CircleDollarSign,
-  Clock3,
+  ExternalLink,
   Landmark,
   MoonStar,
   NotebookPen,
@@ -12,6 +13,7 @@ import {
 } from 'lucide-react';
 import type { PageId, PrayerName } from '../types';
 import { useAppStore } from '../store/AppStore';
+import { useCalendarStore } from '../store/CalendarStore';
 import { TaskRow } from '../components/TaskRow';
 import { formatCurrency, toDayKey, toMonthKey } from '../lib/format';
 import { getAccountBalance, getMonthTotals } from '../lib/finance';
@@ -26,6 +28,7 @@ interface TodayPageProps {
 
 export const TodayPage = ({ onNavigate }: TodayPageProps) => {
   const { data, toggleTask, logHabit, cyclePrayer } = useAppStore();
+  const calendarStore = useCalendarStore();
   const now = new Date();
   const dayKey = toDayKey(now);
   const monthKey = toMonthKey(now);
@@ -56,6 +59,8 @@ export const TodayPage = ({ onNavigate }: TodayPageProps) => {
   const dueHabits = data.habits.filter((habit) => habit.daysOfWeek.includes(now.getDay()) && !habit.paused);
   const totals = getMonthTotals(data.transactions, monthKey);
   const totalBalance = data.accounts.reduce((sum, account) => sum + getAccountBalance(account, data.transactions), 0);
+  const todayCalendarEvents = calendarStore.eventsBetween(startOfDay(now), new Date(startOfDay(now).getTime() + 24 * 60 * 60 * 1000)).slice(0, 4);
+  const calendarMap = new Map(calendarStore.calendars.map((calendar) => [calendar.id, calendar]));
 
   return (
     <div className="page-stack">
@@ -85,6 +90,36 @@ export const TodayPage = ({ onNavigate }: TodayPageProps) => {
       </section>
 
       <div className="dashboard-grid main-dashboard-grid">
+        <section className="panel full-width today-calendar-panel">
+          <div className="panel-header">
+            <div><h3>Agenda hari ini</h3><p>Event dari Google Calendar yang kamu pilih.</p></div>
+            <button className="text-button" onClick={() => onNavigate('calendar')}>Buka jadwal <ArrowRight size={14} /></button>
+          </div>
+          {!calendarStore.connection.connected && (
+            <button className="today-calendar-connect" onClick={() => onNavigate('calendar')}>
+              <CalendarDays size={20} /><span><strong>Hubungkan Google Calendar</strong><small>Tampilkan agenda di halaman Hari Ini tanpa memberi izin edit.</small></span><ArrowRight size={16} />
+            </button>
+          )}
+          {calendarStore.connection.connected && todayCalendarEvents.length === 0 && (
+            <div className="empty-state compact calendar-today-empty"><CalendarDays size={24} /><strong>Tidak ada event hari ini</strong><p>Agenda berikutnya tetap bisa dilihat di halaman Jadwal.</p></div>
+          )}
+          {calendarStore.connection.connected && todayCalendarEvents.length > 0 && (
+            <div className="today-calendar-list">
+              {todayCalendarEvents.map((event) => {
+                const source = calendarMap.get(event.calendarId);
+                return (
+                  <article key={event.id} className="today-calendar-item">
+                    <div className="today-calendar-time">{event.allDay ? 'Sehari' : format(new Date(event.startAt), 'HH.mm')}</div>
+                    <i style={{ background: source?.backgroundColor ?? '#005BAC' }} />
+                    <div><strong>{event.title}</strong><span>{source?.summary ?? 'Google Calendar'}{event.location ? ` · ${event.location}` : ''}</span></div>
+                    {(event.conferenceLink || event.htmlLink) && <a href={event.conferenceLink ?? event.htmlLink} target="_blank" rel="noreferrer" aria-label="Buka event"><ExternalLink size={14} /></a>}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
         <section className="panel span-two">
           <div className="panel-header">
             <div><h3>Tiga fokus hari ini</h3><p>Prioritas dibatasi agar daftar tidak berubah menjadi sumber tekanan.</p></div>
