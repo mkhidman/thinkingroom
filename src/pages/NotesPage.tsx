@@ -27,15 +27,11 @@ export const NotesPage = () => {
   }, [modalOpen, editingNote]);
 
   useEffect(() => {
-    if (!modalOpen || editingNote?.projectId) return;
-    const exists = data.projects.some((project) => project.id === projectId && project.status !== 'done');
-    if (!exists) {
-      setProjectId(
-        data.projects.find((project) => project.status === 'active')?.id ??
-          data.projects.find((project) => project.status !== 'done')?.id ??
-          ''
-      );
-    }
+    if (!modalOpen || !projectId) return;
+    const exists = data.projects.some(
+      (project) => project.id === projectId && (project.status !== 'done' || project.id === editingNote?.projectId)
+    );
+    if (!exists) setProjectId('');
   }, [modalOpen, data.projects, projectId, editingNote?.projectId]);
 
   const notes = useMemo(() => {

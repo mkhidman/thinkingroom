@@ -87,15 +87,11 @@ export const TaskModal = ({ open, onClose, task }: TaskModalProps) => {
   }, [open, task]);
 
   useEffect(() => {
-    if (!open || task?.projectId) return;
-    const exists = data.projects.some((project) => project.id === projectId && project.status !== 'done');
-    if (!exists) {
-      setProjectId(
-        data.projects.find((project) => project.status === 'active')?.id ??
-          data.projects.find((project) => project.status !== 'done')?.id ??
-          ''
-      );
-    }
+    if (!open || !projectId) return;
+    const exists = data.projects.some(
+      (project) => project.id === projectId && (project.status !== 'done' || project.id === task?.projectId)
+    );
+    if (!exists) setProjectId('');
   }, [open, data.projects, projectId, task?.projectId]);
 
   const scheduleAt = useMemo(() => toIso(date, time), [date, time]);

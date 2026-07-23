@@ -2,7 +2,11 @@
 
 Ruang adalah web app/PWA pribadi untuk menghimpun tugas, proyek, jadwal Google Calendar, habit, tracker sholat, catatan, review mingguan, dan keuangan dalam satu alur.
 
-Versi saat ini: **0.5.0 — Google Calendar Read-only**.
+Versi saat ini: **0.5.2 — Tugas tertunda tidak lagi menghilang**.
+
+## Typography
+
+Ruang memakai stack font Samsung-inspired. SamsungOne dan Samsung Sharp Sans hanya digunakan apabila sudah tersedia pada perangkat; source tidak membundel file font proprietary. Perangkat lain menggunakan system font fallback agar tetap cepat, offline-friendly, dan legal untuk didistribusikan.
 
 ## Yang sudah tersedia
 
@@ -11,7 +15,7 @@ Versi saat ini: **0.5.0 — Google Calendar Read-only**.
 - Hari Ini sebagai pusat tindakan dan agenda.
 - Google Calendar read-only: OAuth server-side, pemilihan kalender, agenda, incremental sync, dan cache offline.
 - Tugas dengan jadwal pengerjaan, deadline terpisah, prioritas, estimasi, label, status, dan recurring custom.
-- Tracking tugas terlambat berdasarkan deadline, bukan tanggal jadwal.
+- Tracking tugas membedakan jadwal terlewat (**Tertunda**) dan deadline terlewat (**Terlambat**).
 - Pengelolaan proyek: tambah, edit, status, warna, deskripsi, dan hapus aman.
 - Habit ya/tidak, jumlah, durasi, target mingguan, hari aktif, reminder, jeda, edit, dan hapus.
 - Tracker sholat yang terpisah dari produktivitas.
@@ -119,9 +123,9 @@ Ketiganya mempunyai fungsi berbeda:
 - **Deadline:** batas akhir penyelesaian.
 - **Reminder khusus:** waktu notifikasi eksplisit; jika kosong, aturan global digunakan.
 
-Daftar terlambat hanya memakai deadline. Tugas yang jadwalnya lewat tetapi belum melewati deadline tidak dianggap terlambat.
+Daftar terlambat hanya memakai deadline. Tugas yang jadwalnya lewat tetapi belum melewati deadline masuk ke kategori **Tertunda** dan tetap ditampilkan pada filter **Hari ini** agar tidak menghilang dari UI. Tugas tanpa jadwal maupun deadline tersedia pada filter **Tanpa jadwal**.
 
-Pada recurring task, jarak antara jadwal dan deadline dipertahankan. Contoh: jadwal Senin 08.00 dan deadline Senin 17.00 akan tetap memiliki rentang sembilan jam pada occurrence berikutnya.
+Tugas tertunda menyediakan tindakan cepat **Jadwalkan hari ini** atau **Pilih tanggal baru**. Pada recurring task, jarak antara jadwal dan deadline dipertahankan. Contoh: jadwal Senin 08.00 dan deadline Senin 17.00 akan tetap memiliki rentang sembilan jam pada occurrence berikutnya.
 
 ## Reminder dan notifikasi
 

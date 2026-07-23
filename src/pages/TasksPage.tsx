@@ -1,29 +1,37 @@
 import { useMemo, useState } from 'react';
-import { isAfter, isBefore, isSameDay, parseISO, startOfDay } from 'date-fns';
 import { AlertTriangle, Archive, CalendarClock, FolderKanban, Plus, Repeat2, Settings2, TimerReset } from 'lucide-react';
 import { useAppStore } from '../store/AppStore';
 import { TaskRow } from '../components/TaskRow';
 import { TaskModal } from '../components/TaskModal';
 import { ProjectManagerModal } from '../components/ProjectManagerModal';
 import type { Task, TaskStatus } from '../types';
+import {
+  compareTasksByAttention,
+  isTaskDeadlineOverdue,
+  isTaskScheduleDeferred,
+  isTaskUnscheduled,
+  isTaskUpcoming,
+  taskNeedsAttentionToday
+} from '../lib/taskTracking';
 
-const filters: Array<{ id: 'today' | 'upcoming' | 'overdue' | TaskStatus; label: string }> = [
+type TaskFilter = 'today' | 'deferred' | 'upcoming' | 'unscheduled' | 'overdue' | TaskStatus;
+
+const filters: Array<{ id: TaskFilter; label: string }> = [
   { id: 'today', label: 'Hari ini' },
+  { id: 'deferred', label: 'Tertunda' },
   { id: 'upcoming', label: 'Berikutnya' },
+  { id: 'unscheduled', label: 'Tanpa jadwal' },
   { id: 'overdue', label: 'Terlambat' },
   { id: 'waiting', label: 'Menunggu' },
   { id: 'done', label: 'Selesai' }
 ];
 
-const getTrackingDate = (task: Task) => task.deadlineAt ?? task.dueAt;
-
 export const TasksPage = () => {
-  const { data, toggleTask, deleteTask } = useAppStore();
-  const [activeFilter, setActiveFilter] = useState<(typeof filters)[number]['id']>('today');
+  const { data, toggleTask, updateTask, deleteTask } = useAppStore();
+  const [activeFilter, setActiveFilter] = useState<TaskFilter>('today');
   const [taskModalOpen, setTaskModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [projectManagerOpen, setProjectManagerOpen] = useState(false);
-  const today = startOfDay(new Date());
   const now = new Date();
 
   const filteredTasks = useMemo(() => {
@@ -31,24 +39,14 @@ export const TasksPage = () => {
       .filter((task) => {
         if (activeFilter === 'done') return task.status === 'done';
         if (activeFilter === 'waiting') return task.status === 'waiting';
-        if (task.status !== 'todo') return false;
-
-        const trackingDate = getTrackingDate(task);
-        if (activeFilter === 'overdue') return Boolean(task.deadlineAt && isBefore(parseISO(task.deadlineAt), now));
-        if (activeFilter === 'today') {
-          const scheduledToday = Boolean(task.dueAt && isSameDay(parseISO(task.dueAt), today));
-          const deadlineToday = Boolean(task.deadlineAt && isSameDay(parseISO(task.deadlineAt), today));
-          return scheduledToday || deadlineToday;
-        }
-        return Boolean(trackingDate && isAfter(parseISO(trackingDate), today) && !isSameDay(parseISO(trackingDate), today));
+        if (activeFilter === 'overdue') return isTaskDeadlineOverdue(task, now);
+        if (activeFilter === 'deferred') return isTaskScheduleDeferred(task, now);
+        if (activeFilter === 'unscheduled') return isTaskUnscheduled(task);
+        if (activeFilter === 'today') return taskNeedsAttentionToday(task, now);
+        return isTaskUpcoming(task, now);
       })
-      .sort((a, b) => {
-        const aOverdue = Boolean(a.deadlineAt && isBefore(parseISO(a.deadlineAt), now));
-        const bOverdue = Boolean(b.deadlineAt && isBefore(parseISO(b.deadlineAt), now));
-        if (aOverdue !== bOverdue) return aOverdue ? -1 : 1;
-        return a.priority - b.priority || (getTrackingDate(a) ?? '').localeCompare(getTrackingDate(b) ?? '');
-      });
-  }, [data.tasks, activeFilter, today, now]);
+      .sort((a, b) => compareTasksByAttention(a, b, now));
+  }, [data.tasks, activeFilter, now]);
 
   const projectStats = data.projects.map((project) => {
     const tasks = data.tasks.filter((task) => task.projectId === project.id && task.status !== 'done');
@@ -57,7 +55,9 @@ export const TasksPage = () => {
 
   const recurringCount = data.tasks.filter((task) => task.status === 'todo' && task.recurrence).length;
   const waitingCount = data.tasks.filter((task) => task.status === 'waiting').length;
-  const overdueCount = data.tasks.filter((task) => task.status === 'todo' && task.deadlineAt && isBefore(parseISO(task.deadlineAt), now)).length;
+  const overdueCount = data.tasks.filter((task) => isTaskDeadlineOverdue(task, now)).length;
+  const deferredCount = data.tasks.filter((task) => isTaskScheduleDeferred(task, now)).length;
+  const unscheduledCount = data.tasks.filter((task) => isTaskUnscheduled(task)).length;
 
   const createTask = () => {
     setEditingTask(null);
@@ -67,6 +67,17 @@ export const TasksPage = () => {
   const editTask = (task: Task) => {
     setEditingTask(task);
     setTaskModalOpen(true);
+  };
+
+  const scheduleTaskToday = (task: Task) => {
+    const { id: _id, createdAt: _createdAt, ...updates } = task;
+    const next = new Date();
+    next.setSeconds(0, 0);
+    updateTask(task.id, {
+      ...updates,
+      dueAt: next.toISOString(),
+      reminderAt: task.reminderAt && new Date(task.reminderAt).getTime() > next.getTime() ? task.reminderAt : undefined
+    });
   };
 
   const removeTask = (task: Task) => {
@@ -80,7 +91,10 @@ export const TasksPage = () => {
         <div className="filter-tabs">
           {filters.map((filter) => (
             <button key={filter.id} className={activeFilter === filter.id ? 'active' : ''} onClick={() => setActiveFilter(filter.id)}>
-              {filter.label}{filter.id === 'overdue' && overdueCount > 0 ? ` (${overdueCount})` : ''}
+              {filter.label}
+              {filter.id === 'deferred' && deferredCount > 0 ? ` (${deferredCount})` : ''}
+              {filter.id === 'unscheduled' && unscheduledCount > 0 ? ` (${unscheduledCount})` : ''}
+              {filter.id === 'overdue' && overdueCount > 0 ? ` (${overdueCount})` : ''}
             </button>
           ))}
         </div>
@@ -97,7 +111,7 @@ export const TasksPage = () => {
       <div className="content-split task-page-split">
         <section className="panel">
           <div className="panel-header">
-            <div><h3>{filters.find((filter) => filter.id === activeFilter)?.label}</h3><p>{filteredTasks.length} item ditemukan</p></div>
+            <div><h3>{filters.find((filter) => filter.id === activeFilter)?.label}</h3><p>{filteredTasks.length} item ditemukan{activeFilter === 'today' ? ' · termasuk jadwal dan deadline yang terlewat' : ''}</p></div>
             <span className="subtle-badge">Urut deadline & prioritas</span>
           </div>
           <div className="list-stack">
@@ -109,6 +123,7 @@ export const TasksPage = () => {
                 onToggle={() => toggleTask(task.id)}
                 onEdit={() => editTask(task)}
                 onDelete={() => removeTask(task)}
+                onScheduleToday={isTaskScheduleDeferred(task, now) || isTaskUnscheduled(task) ? () => scheduleTaskToday(task) : undefined}
               />
             ))}
             {filteredTasks.length === 0 && <div className="empty-state"><Archive size={28} /><strong>Tidak ada item</strong><p>Filter ini sedang kosong.</p></div>}
@@ -135,6 +150,7 @@ export const TasksPage = () => {
             <ul className="plain-list">
               <li><strong>Jadwal pengerjaan:</strong> kapan kamu berencana mulai atau mengerjakan tugas.</li>
               <li><strong>Deadline:</strong> batas terakhir tugas harus selesai.</li>
+              <li><strong>Tertunda:</strong> jadwal pengerjaan sudah lewat, tetapi deadline belum terlewati.</li>
               <li><strong>Terlambat:</strong> hanya ditandai ketika deadline terlewati.</li>
               <li><strong>Recurring:</strong> jarak relatif antara jadwal dan deadline dipertahankan.</li>
             </ul>

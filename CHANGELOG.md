@@ -1,4 +1,33 @@
+## 0.5.3 — Samsung-inspired Typography
+
+- Mengganti stack font utama dari Inter ke stack Samsung-inspired.
+- Memprioritaskan SamsungOne pada perangkat yang sudah memilikinya.
+- Memprioritaskan Samsung Sharp Sans untuk heading apabila tersedia.
+- Menambahkan fallback system font yang aman tanpa membundel font proprietary Samsung.
+- Menormalkan ketebalan teks UI ke 400/700 agar tampilan lebih bersih dan dekat dengan karakter Samsung.
+- Menyesuaikan letter spacing heading, tombol, metrik, dan label.
+- Tidak menambahkan dependency npm, CDN font, atau file font berlisensi.
+
 # Changelog
+
+## 0.5.2 — Tugas tertunda tidak lagi menghilang
+
+- Menambahkan kategori **Tertunda** untuk tugas yang jadwal pengerjaannya sudah lewat tetapi deadline belum terlewati.
+- Filter **Hari ini** sekarang juga menampilkan tugas tertunda dan tugas yang melewati deadline agar tetap terlihat pada tampilan default.
+- Menambahkan kategori **Tanpa jadwal** untuk tugas aktif yang tidak memiliki jadwal maupun deadline.
+- Menambahkan tindakan cepat **Jadwalkan hari ini** dan **Pilih tanggal baru** pada tugas tertunda.
+- Halaman Hari Ini memprioritaskan deadline terlewat, lalu jadwal terlewat, kemudian prioritas tugas.
+- Label waktu membedakan **Jadwal terlewat** dari **Terlambat**; terlambat tetap hanya ditentukan oleh deadline.
+- Reminder lama yang sudah lewat dibersihkan ketika tugas dijadwalkan ulang ke hari ini.
+- Tidak ada migration Supabase atau perubahan Google Calendar pada versi ini.
+
+## 0.5.1 — Proyek opsional secara default
+
+- Form tugas baru sekarang selalu dimulai dengan **Tanpa proyek**.
+- Form catatan baru sekarang selalu dimulai dengan **Tanpa proyek**.
+- Quick Capture untuk tugas dan catatan tidak lagi memilih proyek aktif secara otomatis.
+- Proyek tetap dapat dipilih secara manual dan relasi proyek pada item yang sedang diedit tetap dipertahankan.
+- Jika proyek yang dipilih sudah tidak valid, nilai dikembalikan ke **Tanpa proyek** tanpa memilih proyek lain.
 
 ## 0.5.0 — Google Calendar Read-only
 

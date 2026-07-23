@@ -1,4 +1,4 @@
-import { format, isBefore, isSameDay, parseISO, startOfDay } from 'date-fns';
+import { format, startOfDay } from 'date-fns';
 import { id } from 'date-fns/locale';
 import {
   ArrowRight,
@@ -17,6 +17,7 @@ import { useCalendarStore } from '../store/CalendarStore';
 import { TaskRow } from '../components/TaskRow';
 import { formatCurrency, toDayKey, toMonthKey } from '../lib/format';
 import { getAccountBalance, getMonthTotals } from '../lib/finance';
+import { compareTasksByAttention, isTaskDeadlineOverdue, isTaskScheduleDeferred, taskNeedsAttentionToday } from '../lib/taskTracking';
 
 const prayerTimes: Record<PrayerName, string> = {
   Subuh: '04.42', Dzuhur: '11.57', Ashar: '15.18', Maghrib: '17.53', Isya: '19.04'
@@ -27,27 +28,16 @@ interface TodayPageProps {
 }
 
 export const TodayPage = ({ onNavigate }: TodayPageProps) => {
-  const { data, toggleTask, logHabit, cyclePrayer } = useAppStore();
+  const { data, toggleTask, updateTask, logHabit, cyclePrayer } = useAppStore();
   const calendarStore = useCalendarStore();
   const now = new Date();
   const dayKey = toDayKey(now);
   const monthKey = toMonthKey(now);
-  const todayStart = startOfDay(now);
   const todayTasks = data.tasks
-    .filter((task) => {
-      if (task.status !== 'todo') return false;
-      const scheduledToday = Boolean(task.dueAt && isSameDay(parseISO(task.dueAt), now));
-      const deadlineToday = Boolean(task.deadlineAt && isSameDay(parseISO(task.deadlineAt), now));
-      const deadlineOverdue = Boolean(task.deadlineAt && isBefore(parseISO(task.deadlineAt), todayStart));
-      return scheduledToday || deadlineToday || deadlineOverdue;
-    })
-    .sort((a, b) => {
-      const aOverdue = Boolean(a.deadlineAt && isBefore(parseISO(a.deadlineAt), now));
-      const bOverdue = Boolean(b.deadlineAt && isBefore(parseISO(b.deadlineAt), now));
-      if (aOverdue !== bOverdue) return aOverdue ? -1 : 1;
-      return a.priority - b.priority || (a.deadlineAt ?? a.dueAt ?? '').localeCompare(b.deadlineAt ?? b.dueAt ?? '');
-    });
-  const overdueCount = data.tasks.filter((task) => task.status === 'todo' && task.deadlineAt && isBefore(parseISO(task.deadlineAt), now)).length;
+    .filter((task) => taskNeedsAttentionToday(task, now))
+    .sort((a, b) => compareTasksByAttention(a, b, now));
+  const overdueCount = data.tasks.filter((task) => isTaskDeadlineOverdue(task, now)).length;
+  const deferredCount = data.tasks.filter((task) => isTaskScheduleDeferred(task, now)).length;
   const focusTasks = todayTasks.slice(0, 3);
   const nextTask = focusTasks[0];
   const todayPrayers = (Object.keys(prayerTimes) as PrayerName[]).map((prayer) => ({
@@ -61,6 +51,17 @@ export const TodayPage = ({ onNavigate }: TodayPageProps) => {
   const totalBalance = data.accounts.reduce((sum, account) => sum + getAccountBalance(account, data.transactions), 0);
   const todayCalendarEvents = calendarStore.eventsBetween(startOfDay(now), new Date(startOfDay(now).getTime() + 24 * 60 * 60 * 1000)).slice(0, 4);
   const calendarMap = new Map(calendarStore.calendars.map((calendar) => [calendar.id, calendar]));
+
+  const scheduleTaskToday = (task: (typeof data.tasks)[number]) => {
+    const { id: _id, createdAt: _createdAt, ...updates } = task;
+    const next = new Date();
+    next.setSeconds(0, 0);
+    updateTask(task.id, {
+      ...updates,
+      dueAt: next.toISOString(),
+      reminderAt: task.reminderAt && new Date(task.reminderAt).getTime() > next.getTime() ? task.reminderAt : undefined
+    });
+  };
 
   return (
     <div className="page-stack">
@@ -83,7 +84,7 @@ export const TodayPage = ({ onNavigate }: TodayPageProps) => {
       </section>
 
       <section className="summary-strip">
-        <div><Target size={18} /><span><strong>{todayTasks.length}</strong> perlu perhatian hari ini{overdueCount ? ` · ${overdueCount} terlambat` : ''}</span></div>
+        <div><Target size={18} /><span><strong>{todayTasks.length}</strong> perlu perhatian{deferredCount ? ` · ${deferredCount} tertunda` : ''}{overdueCount ? ` · ${overdueCount} terlambat` : ''}</span></div>
         <div><MoonStar size={18} /><span><strong>{todayPrayers.filter((item) => item.status !== 'belum').length}/5</strong> sholat tercatat</span></div>
         <div><CircleDollarSign size={18} /><span><strong>{formatCurrency(totals.expense)}</strong> pengeluaran bulan ini</span></div>
         <div><Landmark size={18} /><span><strong>{formatCurrency(totalBalance)}</strong> total saldo</span></div>
@@ -122,12 +123,18 @@ export const TodayPage = ({ onNavigate }: TodayPageProps) => {
 
         <section className="panel span-two">
           <div className="panel-header">
-            <div><h3>Tiga fokus hari ini</h3><p>Prioritas dibatasi agar daftar tidak berubah menjadi sumber tekanan.</p></div>
+            <div><h3>Tiga fokus hari ini</h3><p>Termasuk tugas dengan jadwal terlewat agar tidak menghilang dari perhatian.</p></div>
             <button className="text-button" onClick={() => onNavigate('tasks')}>Tugas & proyek <ArrowRight size={14} /></button>
           </div>
           <div className="list-stack">
             {focusTasks.length > 0 ? focusTasks.map((task) => (
-              <TaskRow key={task.id} task={task} project={data.projects.find((project) => project.id === task.projectId)} onToggle={() => toggleTask(task.id)} />
+              <TaskRow
+                key={task.id}
+                task={task}
+                project={data.projects.find((project) => project.id === task.projectId)}
+                onToggle={() => toggleTask(task.id)}
+                onScheduleToday={isTaskScheduleDeferred(task, now) ? () => scheduleTaskToday(task) : undefined}
+              />
             )) : <div className="empty-state"><CheckCircle2 size={28} /><strong>Tidak ada fokus tersisa</strong><p>Tugas lain tetap tersedia di halaman Tugas.</p></div>}
           </div>
         </section>

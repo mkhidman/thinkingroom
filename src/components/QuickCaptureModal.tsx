@@ -30,17 +30,11 @@ export const QuickCaptureModal = ({ open, onClose }: QuickCaptureModalProps) => 
   }, [open, type, data.accounts, accountId]);
 
   useEffect(() => {
-    if (!open || type === 'expense') return;
+    if (!open || type === 'expense' || !projectId) return;
     const exists = data.projects.some(
       (project) => project.id === projectId && project.status !== 'done'
     );
-    if (!exists) {
-      setProjectId(
-        data.projects.find((project) => project.status === 'active')?.id ??
-          data.projects.find((project) => project.status !== 'done')?.id ??
-          ''
-      );
-    }
+    if (!exists) setProjectId('');
   }, [open, type, data.projects, projectId]);
 
   const canSubmit = useMemo(() => {
@@ -51,6 +45,7 @@ export const QuickCaptureModal = ({ open, onClose }: QuickCaptureModalProps) => 
 
   const resetAndClose = () => {
     setTitle('');
+    setProjectId('');
     setAmount('');
     onClose();
   };
