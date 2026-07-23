@@ -18,10 +18,7 @@ import { TaskRow } from '../components/TaskRow';
 import { formatCurrency, toDayKey, toMonthKey } from '../lib/format';
 import { getAccountBalance, getMonthTotals } from '../lib/finance';
 import { compareTasksByAttention, isTaskDeadlineOverdue, isTaskScheduleDeferred, taskNeedsAttentionToday } from '../lib/taskTracking';
-
-const prayerTimes: Record<PrayerName, string> = {
-  Subuh: '04.42', Dzuhur: '11.57', Ashar: '15.18', Maghrib: '17.53', Isya: '19.04'
-};
+import { calculatePrayerTimes, getNextPrayer } from '../lib/prayerTimes';
 
 interface TodayPageProps {
   onNavigate: (page: PageId) => void;
@@ -32,6 +29,7 @@ export const TodayPage = ({ onNavigate }: TodayPageProps) => {
   const calendarStore = useCalendarStore();
   const now = new Date();
   const dayKey = toDayKey(now);
+  const prayerTimes = calculatePrayerTimes(now, data.prayerSettings);
   const monthKey = toMonthKey(now);
   const todayTasks = data.tasks
     .filter((task) => taskNeedsAttentionToday(task, now))
@@ -45,7 +43,11 @@ export const TodayPage = ({ onNavigate }: TodayPageProps) => {
     time: prayerTimes[prayer],
     status: data.prayers.find((item) => item.date === dayKey && item.prayer === prayer)?.status ?? 'belum'
   }));
-  const nextPrayer = todayPrayers.find((prayer) => prayer.status === 'belum') ?? todayPrayers[todayPrayers.length - 1];
+  const nextPrayerTime = getNextPrayer(prayerTimes, now);
+  const nextPrayer = {
+    ...nextPrayerTime,
+    status: data.prayers.find((item) => item.date === dayKey && item.prayer === nextPrayerTime.prayer)?.status ?? 'belum'
+  };
   const dueHabits = data.habits.filter((habit) => habit.daysOfWeek.includes(now.getDay()) && !habit.paused);
   const totals = getMonthTotals(data.transactions, monthKey);
   const totalBalance = data.accounts.reduce((sum, account) => sum + getAccountBalance(account, data.transactions), 0);
@@ -78,7 +80,7 @@ export const TodayPage = ({ onNavigate }: TodayPageProps) => {
         <div className="next-info-card">
           <span>Berikutnya</span>
           <strong>{nextPrayer.prayer}</strong>
-          <p>{nextPrayer.time} · {nextPrayer.status === 'belum' ? 'belum dicatat' : nextPrayer.status}</p>
+          <p>{nextPrayer.time}{nextPrayer.tomorrow ? ' besok' : ''} · {nextPrayer.status === 'belum' ? 'belum dicatat' : nextPrayer.status}</p>
           <button onClick={() => cyclePrayer(nextPrayer.prayer)}>Perbarui status</button>
         </div>
       </section>
@@ -161,7 +163,9 @@ export const TodayPage = ({ onNavigate }: TodayPageProps) => {
                 <article className="habit-today-card" key={habit.id}>
                   <div className="habit-card-top"><div><strong>{habit.name}</strong><span>{current}/{habit.targetValue} {habit.unit}</span></div><span>{percentage}%</span></div>
                   <div className="progress-track"><i style={{ width: `${percentage}%` }} /></div>
-                  <button onClick={() => logHabit(habit.id)}>{habit.metric === 'boolean' ? (current ? 'Batalkan' : 'Tandai selesai') : `+1 ${habit.unit}`}</button>
+                  <button onClick={() => logHabit(habit.id, current >= habit.targetValue ? 0 : habit.targetValue)}>
+                    {current >= habit.targetValue ? 'Batalkan' : 'Catat target'}
+                  </button>
                 </article>
               );
             })}
@@ -180,7 +184,7 @@ export const TodayPage = ({ onNavigate }: TodayPageProps) => {
         <section className="panel full-width">
           <div className="panel-header"><div><h3>Catatan terbaru</h3><p>Potongan konteks yang bisa ditemukan kembali lewat pencarian.</p></div><button className="text-button" onClick={() => onNavigate('notes')}>Semua catatan <ArrowRight size={14} /></button></div>
           <div className="note-preview-grid">
-            {data.notes.slice(0, 3).map((note) => (
+            {[...data.notes].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)).slice(0, 3).map((note) => (
               <article key={note.id} className="note-preview-card">
                 <span className={`note-type ${note.type}`}>{note.type === 'decision' ? 'Keputusan' : note.type === 'idea' ? 'Ide' : 'Catatan'}</span>
                 <strong>{note.title}</strong>

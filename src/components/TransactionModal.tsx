@@ -41,10 +41,10 @@ export const TransactionModal = ({ open, onClose, transaction }: TransactionModa
 
   const categories = type === 'income' ? incomeCategories : expenseCategories;
   const canSubmit = useMemo(() => {
-    if (!Number(amount) || !accountId || !note.trim()) return false;
+    if (!Number(amount) || !accountId || !note.trim() || !date) return false;
     if (type === 'transfer') return Boolean(toAccountId) && toAccountId !== accountId;
     return true;
-  }, [amount, accountId, note, type, toAccountId]);
+  }, [amount, accountId, note, date, type, toAccountId]);
 
   const changeType = (nextType: TransactionType) => {
     setType(nextType);
@@ -81,7 +81,7 @@ export const TransactionModal = ({ open, onClose, transaction }: TransactionModa
 
           <div className="form-grid two-columns">
             <label className="field"><span>Jumlah</span><input autoFocus inputMode="numeric" value={amount} onChange={(event) => setAmount(event.target.value.replace(/[^0-9]/g, ''))} placeholder="0" /></label>
-            <label className="field"><span>Tanggal</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
+            <label className="field"><span>Tanggal</span><input required type="date" value={date} onChange={(event) => setDate(event.target.value)} /></label>
             <label className="field"><span>{type === 'transfer' ? 'Dari rekening' : 'Rekening'}</span><select value={accountId} onChange={(event) => { setAccountId(event.target.value); if (toAccountId === event.target.value) setToAccountId(data.accounts.find((account) => account.id !== event.target.value)?.id ?? ''); }}>{data.accounts.map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>
             {type === 'transfer' && <label className="field"><span>Ke rekening</span><select value={toAccountId} onChange={(event) => setToAccountId(event.target.value)}>{data.accounts.filter((account) => account.id !== accountId).map((account) => <option key={account.id} value={account.id}>{account.name}</option>)}</select></label>}
             {type !== 'transfer' && <label className="field"><span>Kategori</span><select value={category} onChange={(event) => setCategory(event.target.value)}>{categories.map((item) => <option key={item}>{item}</option>)}</select></label>}

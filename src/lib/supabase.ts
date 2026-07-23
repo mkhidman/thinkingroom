@@ -49,6 +49,29 @@ export type SaveCloudResult =
 
 const SESSION_KEY = 'ruang-supabase-session-v1';
 
+export class SupabaseAuthError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'SupabaseAuthError';
+    this.status = status;
+  }
+}
+
+export const isPermanentAuthError = (error: unknown) => {
+  if (!(error instanceof SupabaseAuthError)) return false;
+  const message = error.message.toLowerCase();
+  return (error.status === 400 || error.status === 401)
+    && (
+      message.includes('refresh token')
+      || message.includes('invalid grant')
+      || message.includes('invalid_grant')
+      || message.includes('session not found')
+      || message.includes('already used')
+    );
+};
+
 const baseHeaders = () => ({
   apikey: publishableKey,
   'Content-Type': 'application/json'
@@ -86,11 +109,15 @@ export const loadStoredSession = (): AuthSession | null => {
 };
 
 export const storeSession = (session: AuthSession | null) => {
-  if (!session) {
-    localStorage.removeItem(SESSION_KEY);
-    return;
+  try {
+    if (!session) {
+      localStorage.removeItem(SESSION_KEY);
+      return;
+    }
+    localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  } catch {
+    // Session tetap hidup di memory saat storage browser tidak tersedia.
   }
-  localStorage.setItem(SESSION_KEY, JSON.stringify(session));
 };
 
 export const signInWithPassword = async (email: string, password: string) => {
@@ -116,11 +143,31 @@ export const signUpWithPassword = async (email: string, password: string, displa
   return { session: normalizeSession(payload), user: payload.user ?? null };
 };
 
+export const requestPasswordResetEmail = async (email: string, redirectTo: string) => {
+  if (!isSupabaseConfigured) throw new Error('Supabase belum dikonfigurasi.');
+  const response = await fetch(`${supabaseUrl}/auth/v1/recover`, {
+    method: 'POST',
+    headers: baseHeaders(),
+    body: JSON.stringify({ email, redirect_to: redirectTo })
+  });
+  if (!response.ok) throw new Error(await getErrorMessage(response));
+};
+
+export const updatePasswordWithToken = async (accessToken: string, password: string) => {
+  if (!isSupabaseConfigured) throw new Error('Supabase belum dikonfigurasi.');
+  const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    method: 'PUT',
+    headers: { ...baseHeaders(), Authorization: `Bearer ${accessToken}` },
+    body: JSON.stringify({ password })
+  });
+  if (!response.ok) throw new Error(await getErrorMessage(response));
+};
+
 export const refreshAuthSession = async (refreshToken: string) => {
   const response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
     method: 'POST', headers: baseHeaders(), body: JSON.stringify({ refresh_token: refreshToken })
   });
-  if (!response.ok) throw new Error(await getErrorMessage(response));
+  if (!response.ok) throw new SupabaseAuthError(await getErrorMessage(response), response.status);
   const session = normalizeSession((await response.json()) as AuthResponse);
   if (!session) throw new Error('Sesi tidak dapat diperbarui.');
   return session;

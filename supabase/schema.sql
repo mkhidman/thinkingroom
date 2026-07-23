@@ -201,6 +201,24 @@ grant usage on schema public to authenticated;
 grant select on table public.app_state to authenticated;
 revoke insert, update, delete on table public.app_state from authenticated;
 
+-- Tabel domain di atas dipertahankan hanya sebagai rancangan migrasi masa
+-- depan. Aplikasi 0.6.x memakai app_state sebagai satu-satunya source of truth.
+-- Menutup akses client mencegah dua model data aktif sekaligus dan mencegah
+-- relasi lintas pengguna sebelum foreign key komposit tersedia.
+revoke all on table
+  public.projects,
+  public.tasks,
+  public.subtasks,
+  public.habits,
+  public.habit_logs,
+  public.prayer_logs,
+  public.notes,
+  public.accounts,
+  public.transactions,
+  public.budgets,
+  public.weekly_reviews
+from anon, authenticated;
+
 -- Menjaga user_id selalu berasal dari sesi, bukan nilai bebas dari client.
 create or replace function public.enforce_app_state_owner()
 returns trigger

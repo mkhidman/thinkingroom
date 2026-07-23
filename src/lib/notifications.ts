@@ -3,6 +3,7 @@ import type { AppData, Task } from '../types';
 
 const SETTINGS_KEY = 'ruang-reminder-settings-v1';
 const SENT_KEY = 'ruang-reminder-sent-v1';
+const keyFor = (base: string, userId?: string) => userId ? `${base}:user:${userId}` : base;
 
 export interface ReminderSettings {
   enabled: boolean;
@@ -30,9 +31,9 @@ export const defaultReminderSettings: ReminderSettings = {
   deadlineLeadMinutes: 60
 };
 
-export const loadReminderSettings = (): ReminderSettings => {
+export const loadReminderSettings = (userId?: string): ReminderSettings => {
   try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
+    const raw = localStorage.getItem(keyFor(SETTINGS_KEY, userId));
     if (!raw) return defaultReminderSettings;
     const parsed = JSON.parse(raw) as Partial<ReminderSettings>;
     return {
@@ -46,8 +47,8 @@ export const loadReminderSettings = (): ReminderSettings => {
   }
 };
 
-export const saveReminderSettings = (settings: ReminderSettings) => {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+export const saveReminderSettings = (settings: ReminderSettings, userId?: string) => {
+  try { localStorage.setItem(keyFor(SETTINGS_KEY, userId), JSON.stringify(settings)); } catch { /* Tetap aktif di memory. */ }
   window.dispatchEvent(new CustomEvent('ruang:reminder-settings', { detail: settings }));
 };
 
@@ -61,11 +62,12 @@ export const collectReminderItems = (data: AppData, settings: ReminderSettings, 
   data.tasks.filter((task) => task.status === 'todo').forEach((task) => {
     const project = taskProjectName(data, task);
     const context = project ? ` · ${project}` : '';
+    const isBill = task.labels.some((label) => label.toLocaleLowerCase('id-ID') === 'tagihan');
 
     if (task.reminderAt) {
       reminders.push({
         id: `task-explicit:${task.id}:${task.reminderAt}`,
-        title: task.labels.includes('tagihan') ? `Pengingat tagihan: ${task.title}` : `Pengingat tugas: ${task.title}`,
+        title: isBill ? `Pengingat tagihan: ${task.title}` : `Pengingat tugas: ${task.title}`,
         body: `Reminder khusus${context}`,
         at: task.reminderAt,
         kind: 'task'
@@ -73,7 +75,7 @@ export const collectReminderItems = (data: AppData, settings: ReminderSettings, 
     } else if (settings.taskReminders && task.dueAt) {
       reminders.push({
         id: `task-schedule:${task.id}:${task.dueAt}:${settings.taskLeadMinutes}`,
-        title: task.labels.includes('tagihan') ? `Tagihan segera dijadwalkan: ${task.title}` : `Tugas segera dimulai: ${task.title}`,
+        title: isBill ? `Tagihan segera dijadwalkan: ${task.title}` : `Tugas segera dimulai: ${task.title}`,
         body: `${settings.taskLeadMinutes} menit sebelum jadwal${context}`,
         at: atLead(task.dueAt, settings.taskLeadMinutes),
         kind: 'task'
@@ -110,27 +112,28 @@ export const collectReminderItems = (data: AppData, settings: ReminderSettings, 
   return reminders.sort((a, b) => a.at.localeCompare(b.at));
 };
 
-const loadSent = (): Record<string, string> => {
+const loadSent = (userId?: string): Record<string, string> => {
   try {
-    return JSON.parse(localStorage.getItem(SENT_KEY) ?? '{}') as Record<string, string>;
+    return JSON.parse(localStorage.getItem(keyFor(SENT_KEY, userId)) ?? '{}') as Record<string, string>;
   } catch {
     return {};
   }
 };
 
-const saveSent = (sent: Record<string, string>) => {
+const saveSent = (sent: Record<string, string>, userId?: string) => {
   const cutoff = Date.now() - 14 * 24 * 60 * 60 * 1000;
   const cleaned = Object.fromEntries(Object.entries(sent).filter(([, value]) => new Date(value).getTime() >= cutoff));
-  localStorage.setItem(SENT_KEY, JSON.stringify(cleaned));
+  try { localStorage.setItem(keyFor(SENT_KEY, userId), JSON.stringify(cleaned)); } catch { /* Dedupe hanya optimasi. */ }
 };
 
 export const getDueUnsentReminders = (
   data: AppData,
   settings: ReminderSettings,
   now = new Date(),
-  graceMinutes = 10
+  graceMinutes = 24 * 60,
+  userId?: string
 ): ReminderItem[] => {
-  const sent = loadSent();
+  const sent = loadSent(userId);
   const nowMs = now.getTime();
   const lowerBound = nowMs - graceMinutes * 60_000;
   return collectReminderItems(data, settings, now).filter((item) => {
@@ -140,10 +143,10 @@ export const getDueUnsentReminders = (
   });
 };
 
-export const markReminderSent = (id: string) => {
-  const sent = loadSent();
+export const markReminderSent = (id: string, userId?: string) => {
+  const sent = loadSent(userId);
   sent[id] = new Date().toISOString();
-  saveSent(sent);
+  saveSent(sent, userId);
 };
 
 export const showSystemNotification = async (item: ReminderItem) => {

@@ -3,7 +3,6 @@ import {
   ArchiveRestore,
   Cloud,
   DatabaseBackup,
-  Download,
   FileJson,
   FileSpreadsheet,
   LoaderCircle,
@@ -159,6 +158,18 @@ export const DataManagementModal = ({ open, onClose }: DataManagementModalProps)
               ))}
             </div>
           )}
+        </section>
+
+        <section className="data-manager-section full-span data-danger-zone">
+          <div className="section-heading compact-heading">
+            <div><strong>Reset workspace</strong><span>Gunakan hanya jika ingin memulai dari kosong. Snapshot lokal dibuat sebelum reset.</span></div>
+          </div>
+          <button className="danger-button" onClick={() => {
+            const confirmation = window.prompt('Ketik HAPUS untuk mengosongkan seluruh data Ruang.');
+            if (confirmation !== 'HAPUS') return;
+            store.resetData();
+            onClose();
+          }}><Trash2 size={16} /> Hapus seluruh data</button>
         </section>
       </div>
     </Modal>

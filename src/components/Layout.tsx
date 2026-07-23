@@ -119,7 +119,7 @@ export const Layout = ({
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
-              <button key={item.id} className={page === item.id ? 'active' : ''} onClick={() => selectPage(item.id)}>
+              <button key={item.id} className={page === item.id ? 'active' : ''} aria-current={page === item.id ? 'page' : undefined} onClick={() => selectPage(item.id)}>
                 <Icon size={18} strokeWidth={2} /><span>{item.label}</span>
               </button>
             );
@@ -133,6 +133,7 @@ export const Layout = ({
             className={`sync-card sync-${syncStatus}`}
             onClick={cloudEnabled && syncStatus !== 'loading' && syncStatus !== 'needs-setup' ? onSync : undefined}
             title={syncError ?? undefined}
+            aria-live="polite"
           >
             <SyncIcon size={16} className={syncStatus === 'syncing' || syncStatus === 'loading' ? 'spin' : ''} />
             <div><strong>{syncMeta[syncStatus].label}</strong><span>{cloudEnabled ? (syncTime ? `Terakhir ${syncTime}` : 'Akun Supabase') : 'Data hanya di perangkat ini'}</span></div>

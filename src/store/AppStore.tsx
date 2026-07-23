@@ -10,7 +10,7 @@ import {
 } from 'react';
 import { format } from 'date-fns';
 import { createEmptyData } from '../data/empty';
-import { createRecurringTask } from '../lib/recurrence';
+import { toggleTaskWithLifecycle, updateTaskWithLifecycle } from '../lib/taskLifecycle';
 import {
   clearAppData,
   clearLegacyAppData,
@@ -44,6 +44,7 @@ import type {
   Note,
   PrayerName,
   Project,
+  PrayerSettings,
   PrayerStatus,
   Task,
   Transaction,
@@ -93,8 +94,9 @@ interface StoreValue {
   addHabit: (habit: Omit<Habit, 'id' | 'logs'>) => void;
   updateHabit: (habitId: string, updates: Omit<Habit, 'id' | 'logs'>) => void;
   deleteHabit: (habitId: string) => void;
-  logHabit: (habitId: string, value?: number) => void;
+  logHabit: (habitId: string, value?: number, date?: Date) => void;
   cyclePrayer: (prayer: PrayerName) => void;
+  updatePrayerSettings: (settings: PrayerSettings) => void;
   addNote: (note: NewNote) => void;
   updateNote: (noteId: string, updates: NewNote) => void;
   deleteNote: (noteId: string) => void;
@@ -119,6 +121,7 @@ const AppStoreContext = createContext<StoreValue | null>(null);
 const prayerCycle: PrayerStatus[] = ['belum', 'selesai', 'tepat-waktu', 'berjamaah'];
 const readableError = (error: unknown) => error instanceof Error ? error.message : 'Sinkronisasi gagal.';
 const sameLocalDay = (first: string, second: Date) => new Date(first).toDateString() === second.toDateString();
+const normalizeCategory = (value: string) => value.trim().toLocaleLowerCase('id-ID');
 
 export const AppStoreProvider = ({ children }: PropsWithChildren) => {
   const { configured, session, refreshSession } = useAuthStore();
@@ -139,6 +142,8 @@ export const AppStoreProvider = ({ children }: PropsWithChildren) => {
   const revisionRef = useRef(cloudRevision);
   const dirtyRef = useRef(hasUnsyncedChanges);
   const syncTimerRef = useRef<number | null>(null);
+  const mutationVersionRef = useRef(0);
+  const saveInFlightRef = useRef<Promise<boolean> | null>(null);
   const pendingCloudBackupReasonRef = useRef<string | null>(null);
   const pendingSetupDeviceDataRef = useRef<AppData | null>(null);
 
@@ -153,13 +158,18 @@ export const AppStoreProvider = ({ children }: PropsWithChildren) => {
       setLocalBackups(current);
       return;
     }
-    setLocalBackups(createLocalBackup(snapshotData, reason, userId));
+    const nextBackups = createLocalBackup(snapshotData, reason, userId);
+    setLocalBackups(nextBackups);
+    if (nextBackups.length === 0) {
+      setSyncError('Snapshot lokal tidak dapat disimpan karena penyimpanan perangkat penuh atau diblokir.');
+    }
   }, [session?.user.id]);
 
   useEffect(() => {
+    let stored = true;
     if (configured && session) {
       if (cloudReadyRef.current || syncStatus === 'conflict') {
-        saveAppData(data, session.user.id);
+        stored = saveAppData(data, session.user.id);
         saveSyncMeta(session.user.id, {
           revision: cloudRevision,
           dirty: hasUnsyncedChanges,
@@ -167,29 +177,42 @@ export const AppStoreProvider = ({ children }: PropsWithChildren) => {
         });
       }
     } else if (!configured) {
-      saveAppData(data);
+      stored = saveAppData(data);
+    }
+    if (!stored) {
+      setSyncError('Penyimpanan perangkat penuh atau diblokir. Export backup sebelum menambah data baru.');
     }
   }, [data, configured, session, syncStatus, cloudRevision, hasUnsyncedChanges, lastSyncedAt]);
 
   const markLocalChange = useCallback((updater: (current: AppData) => AppData) => {
-    setData((current) => updater(current));
+    const next = updater(dataRef.current);
+    if (next === dataRef.current) return;
+    dataRef.current = next;
+    mutationVersionRef.current += 1;
+    setData(next);
     setHasUnsyncedChanges(true);
     dirtyRef.current = true;
     if (!configured) setSyncStatus('local');
     else if (!navigator.onLine && !conflict) setSyncStatus('offline');
   }, [configured, conflict]);
 
-  const handleSaved = useCallback((revision: number, updatedAt: string) => {
+  const handleSaved = useCallback((revision: number, updatedAt: string, savedMutationVersion: number) => {
     setCloudRevision(revision);
     revisionRef.current = revision;
     setLastSyncedAt(updatedAt);
-    setHasUnsyncedChanges(false);
-    dirtyRef.current = false;
     setConflict(null);
-    pendingCloudBackupReasonRef.current = null;
     setSyncError(null);
-    setSyncStatus('synced');
     cloudReadyRef.current = true;
+    if (mutationVersionRef.current === savedMutationVersion) {
+      setHasUnsyncedChanges(false);
+      dirtyRef.current = false;
+      pendingCloudBackupReasonRef.current = null;
+      setSyncStatus('synced');
+    } else {
+      setHasUnsyncedChanges(true);
+      dirtyRef.current = true;
+      setSyncStatus('syncing');
+    }
   }, []);
 
   const applyCloudState = useCallback((row: AppStateRow, userId: string) => {
@@ -197,6 +220,7 @@ export const AppStoreProvider = ({ children }: PropsWithChildren) => {
     dataRef.current = row.data;
     revisionRef.current = row.revision;
     dirtyRef.current = false;
+    mutationVersionRef.current = 0;
     pendingSetupDeviceDataRef.current = null;
     setData(row.data);
     saveAppData(row.data, userId);
@@ -212,60 +236,84 @@ export const AppStoreProvider = ({ children }: PropsWithChildren) => {
     window.setTimeout(() => { applyingRemoteRef.current = false; }, 0);
   }, []);
 
-  const saveToCloud = useCallback(async (
+  const saveToCloud = useCallback((
     activeSession: AuthSession,
     nextData: AppData,
     expectedRevision = revisionRef.current,
     backupReason?: string
   ) => {
+    if (saveInFlightRef.current) return saveInFlightRef.current;
     setSyncStatus('syncing');
     setSyncError(null);
 
-    const commit = async (targetSession: AuthSession) => {
-      persistBackup(nextData, 'Backup otomatis harian', true);
-      const result = await saveCloudState(targetSession, nextData, expectedRevision, backupReason);
-      if (result.status === 'conflict') {
-        setConflict({
-          remoteData: result.data,
-          remoteRevision: result.revision,
-          remoteUpdatedAt: result.updated_at,
-          localRevision: expectedRevision
-        });
-        setHasUnsyncedChanges(true);
-        dirtyRef.current = true;
-        setSyncStatus('conflict');
-        setSyncError('Data perangkat dan cloud berubah dari versi dasar yang sama. Pilih versi yang ingin dipertahankan.');
-        return false;
-      }
-      pendingCloudBackupReasonRef.current = null;
-      handleSaved(result.revision, result.updated_at);
-      return true;
-    };
+    const operation = (async () => {
+      let targetSession = activeSession;
+      let snapshot = nextData;
+      let baseRevision = expectedRevision;
+      let reason = backupReason;
+      let snapshotVersion = mutationVersionRef.current;
 
-    try {
-      return await commit(activeSession);
-    } catch (firstError) {
-      const firstMessage = readableError(firstError);
-      const lower = firstMessage.toLowerCase();
-      const looksLikeExpiredSession = firstMessage.includes('401') || lower.includes('jwt') || lower.includes('token');
-      if (looksLikeExpiredSession) {
+      while (true) {
+        persistBackup(snapshot, 'Backup otomatis harian', true);
+        let result;
         try {
-          const nextSession = await refreshSession();
-          if (nextSession) return await commit(nextSession);
-        } catch {
-          // Dilanjutkan ke status error/offline.
+          result = await saveCloudState(targetSession, snapshot, baseRevision, reason);
+        } catch (firstError) {
+          const firstMessage = readableError(firstError);
+          const lower = firstMessage.toLowerCase();
+          const looksLikeExpiredSession = firstMessage.includes('401') || lower.includes('jwt') || lower.includes('token');
+          if (looksLikeExpiredSession) {
+            const nextSession = await refreshSession();
+            if (nextSession) {
+              targetSession = nextSession;
+              result = await saveCloudState(targetSession, snapshot, baseRevision, reason);
+            } else {
+              throw firstError;
+            }
+          } else {
+            throw firstError;
+          }
         }
-      }
 
+        if (result.status === 'conflict') {
+          setConflict({
+            remoteData: result.data,
+            remoteRevision: result.revision,
+            remoteUpdatedAt: result.updated_at,
+            localRevision: baseRevision
+          });
+          setHasUnsyncedChanges(true);
+          dirtyRef.current = true;
+          setSyncStatus('conflict');
+          setSyncError('Data perangkat dan cloud berubah dari versi dasar yang sama. Pilih versi yang ingin dipertahankan.');
+          return false;
+        }
+
+        handleSaved(result.revision, result.updated_at, snapshotVersion);
+        if (mutationVersionRef.current === snapshotVersion) return true;
+
+        // Ada edit yang terjadi ketika request sebelumnya berjalan. Kirim
+        // snapshot terbaru dengan revision hasil commit tadi dalam antrean yang
+        // sama, sehingga tidak ada request cloud yang saling menimpa.
+        snapshot = dataRef.current;
+        snapshotVersion = mutationVersionRef.current;
+        baseRevision = result.revision;
+        reason = pendingCloudBackupReasonRef.current ?? undefined;
+      }
+    })().catch((error) => {
       if (!navigator.onLine) {
         setSyncStatus('offline');
         setSyncError('Perubahan tersimpan di perangkat dan akan dicoba lagi saat online.');
       } else {
         setSyncStatus('error');
-        setSyncError(firstMessage);
+        setSyncError(readableError(error));
       }
-      throw firstError;
-    }
+      throw error;
+    }).finally(() => {
+      saveInFlightRef.current = null;
+    });
+    saveInFlightRef.current = operation;
+    return operation;
   }, [handleSaved, persistBackup, refreshSession]);
 
   useEffect(() => {
@@ -286,6 +334,7 @@ export const AppStoreProvider = ({ children }: PropsWithChildren) => {
       revisionRef.current = 0;
       setHasUnsyncedChanges(false);
       dirtyRef.current = false;
+      mutationVersionRef.current = 0;
       setLastSyncedAt(null);
       setSyncStatus('loading');
       setConflict(null);
@@ -318,14 +367,38 @@ export const AppStoreProvider = ({ children }: PropsWithChildren) => {
           setHasUnsyncedChanges(false);
           setLastSyncedAt(null);
           setSyncStatus('needs-setup');
-          window.setTimeout(() => { applyingRemoteRef.current = false; }, 0);
+          applyingRemoteRef.current = false;
           return;
         }
 
-        // Supabase adalah sumber utama. Perubahan lokal yang belum tersinkron
-        // diamankan sebagai backup, tetapi tidak mengalahkan data cloud saat startup.
         if (meta.dirty && deviceData && JSON.stringify(deviceData) !== JSON.stringify(row.data)) {
-          persistBackup(deviceData, 'Perubahan lokal sebelum memuat data utama Supabase');
+          applyingRemoteRef.current = true;
+          dataRef.current = deviceData;
+          mutationVersionRef.current = 1;
+          dirtyRef.current = true;
+          setData(deviceData);
+          setHasUnsyncedChanges(true);
+          setLastSyncedAt(meta.lastSyncedAt);
+          cloudReadyRef.current = true;
+
+          if (row.revision === meta.revision) {
+            revisionRef.current = row.revision;
+            setCloudRevision(row.revision);
+            setSyncStatus(navigator.onLine ? 'syncing' : 'offline');
+          } else {
+            revisionRef.current = meta.revision;
+            setCloudRevision(meta.revision);
+            setConflict({
+              remoteData: row.data,
+              remoteRevision: row.revision,
+              remoteUpdatedAt: row.updated_at,
+              localRevision: meta.revision
+            });
+            setSyncError('Perubahan offline dan cloud sama-sama berubah. Pilih versi yang ingin dipertahankan.');
+            setSyncStatus('conflict');
+          }
+          applyingRemoteRef.current = false;
+          return;
         }
         applyCloudState(row, userId);
       })
@@ -343,17 +416,18 @@ export const AppStoreProvider = ({ children }: PropsWithChildren) => {
           setSyncError(message);
         }
 
-        if (!navigator.onLine && deviceData) {
+        if (deviceData) {
           applyingRemoteRef.current = true;
           dataRef.current = deviceData;
           revisionRef.current = meta.revision;
           dirtyRef.current = meta.dirty;
+          mutationVersionRef.current = meta.dirty ? 1 : 0;
           setData(deviceData);
           setCloudRevision(meta.revision);
           setHasUnsyncedChanges(meta.dirty);
           setLastSyncedAt(meta.lastSyncedAt);
           cloudReadyRef.current = true;
-          setSyncStatus('offline');
+          setSyncStatus(navigator.onLine ? 'error' : 'offline');
           window.setTimeout(() => { applyingRemoteRef.current = false; }, 0);
           return;
         }
@@ -552,25 +626,29 @@ export const AppStoreProvider = ({ children }: PropsWithChildren) => {
   }, [session, persistBackup, markLocalChange]);
 
   const addTask = useCallback((task: NewTask) => {
-    markLocalChange((current) => ({
-      ...current,
-      tasks: [{
+    markLocalChange((current) => {
+      const nextTask: Task = {
         ...task,
         id: createId('task'),
         status: task.status ?? 'todo',
         labels: task.labels ?? [],
         subtasks: task.subtasks ?? [],
         createdAt: new Date().toISOString()
-      }, ...current.tasks]
-    }));
+      };
+      if (nextTask.status !== 'done') return { ...current, tasks: [nextTask, ...current.tasks] };
+      const { id: _id, createdAt: _createdAt, ...updates } = nextTask;
+      const initialTask: Task = { ...nextTask, status: 'todo', completedAt: undefined };
+      return {
+        ...current,
+        tasks: updateTaskWithLifecycle([initialTask, ...current.tasks], initialTask.id, updates)
+      };
+    });
   }, [markLocalChange]);
 
   const updateTask = useCallback((taskId: string, updates: TaskUpdates) => {
     markLocalChange((current) => ({
       ...current,
-      tasks: current.tasks.map((task) => task.id === taskId
-        ? { ...updates, id: taskId, createdAt: task.createdAt }
-        : task)
+      tasks: updateTaskWithLifecycle(current.tasks, taskId, updates)
     }));
   }, [markLocalChange]);
 
@@ -602,17 +680,7 @@ export const AppStoreProvider = ({ children }: PropsWithChildren) => {
   }, [markLocalChange]);
 
   const toggleTask = useCallback((taskId: string) => {
-    markLocalChange((current) => {
-      const task = current.tasks.find((item) => item.id === taskId);
-      if (!task) return current;
-      if (task.status === 'done') {
-        return { ...current, tasks: current.tasks.map((item) => item.id === taskId ? { ...item, status: 'todo', completedAt: undefined } : item) };
-      }
-      const completedAt = new Date().toISOString();
-      const nextTask = createRecurringTask(task, completedAt);
-      const updatedTasks = current.tasks.map((item) => item.id === taskId ? { ...item, status: 'done' as const, completedAt } : item);
-      return { ...current, tasks: nextTask ? [nextTask, ...updatedTasks] : updatedTasks };
-    });
+    markLocalChange((current) => ({ ...current, tasks: toggleTaskWithLifecycle(current.tasks, taskId) }));
   }, [markLocalChange]);
 
   const addAccount = useCallback((account: Omit<Account, 'id'>) => {
@@ -627,7 +695,10 @@ export const AppStoreProvider = ({ children }: PropsWithChildren) => {
   }, [markLocalChange]);
 
   const deleteAccount = useCallback((accountId: string) => {
-    if (dataRef.current.transactions.some((transaction) => transaction.accountId === accountId || transaction.toAccountId === accountId)) return false;
+    if (
+      dataRef.current.transactions.some((transaction) => transaction.accountId === accountId || transaction.toAccountId === accountId)
+      || dataRef.current.tasks.some((task) => task.billAccountId === accountId && task.status !== 'done')
+    ) return false;
     markLocalChange((current) => ({ ...current, accounts: current.accounts.filter((account) => account.id !== accountId) }));
     return true;
   }, [markLocalChange]);
@@ -667,8 +738,8 @@ export const AppStoreProvider = ({ children }: PropsWithChildren) => {
     markLocalChange((current) => ({ ...current, transactions: current.transactions.filter((transaction) => transaction.id !== transactionId) }));
   }, [markLocalChange]);
 
-  const logHabit = useCallback((habitId: string, value?: number) => {
-    const dayKey = format(new Date(), 'yyyy-MM-dd');
+  const logHabit = useCallback((habitId: string, value?: number, date = new Date()) => {
+    const dayKey = format(date, 'yyyy-MM-dd');
     markLocalChange((current) => ({
       ...current,
       habits: current.habits.map((habit) => {
@@ -678,6 +749,10 @@ export const AppStoreProvider = ({ children }: PropsWithChildren) => {
         return { ...habit, logs: { ...habit.logs, [dayKey]: nextValue } };
       })
     }));
+  }, [markLocalChange]);
+
+  const updatePrayerSettings = useCallback((settings: PrayerSettings) => {
+    markLocalChange((current) => ({ ...current, prayerSettings: settings }));
   }, [markLocalChange]);
 
   const cyclePrayer = useCallback((prayer: PrayerName) => {
@@ -715,13 +790,28 @@ export const AppStoreProvider = ({ children }: PropsWithChildren) => {
   }, [markLocalChange]);
 
   const addBudget = useCallback((budget: Omit<Budget, 'id'>) => {
-    markLocalChange((current) => ({ ...current, budgets: [...current.budgets, { ...budget, id: createId('budget') }] }));
+    markLocalChange((current) => {
+      const existing = current.budgets.find(
+        (item) => item.month === budget.month && normalizeCategory(item.category) === normalizeCategory(budget.category)
+      );
+      return {
+        ...current,
+        budgets: existing
+          ? current.budgets.map((item) => item.id === existing.id ? { ...item, ...budget } : item)
+          : [...current.budgets, { ...budget, id: createId('budget') }]
+      };
+    });
   }, [markLocalChange]);
 
   const updateBudget = useCallback((budgetId: string, updates: Omit<Budget, 'id'>) => {
     markLocalChange((current) => ({
       ...current,
-      budgets: current.budgets.map((budget) => budget.id === budgetId ? { ...updates, id: budgetId } : budget)
+      budgets: current.budgets
+        .filter((budget) => budget.id === budgetId || !(
+          budget.month === updates.month
+          && normalizeCategory(budget.category) === normalizeCategory(updates.category)
+        ))
+        .map((budget) => budget.id === budgetId ? { ...updates, id: budgetId } : budget)
     }));
   }, [markLocalChange]);
 
@@ -774,6 +864,7 @@ export const AppStoreProvider = ({ children }: PropsWithChildren) => {
     deleteHabit,
     logHabit,
     cyclePrayer,
+    updatePrayerSettings,
     addNote,
     updateNote,
     deleteNote,
@@ -795,7 +886,7 @@ export const AppStoreProvider = ({ children }: PropsWithChildren) => {
   }), [
     data, syncStatus, syncError, lastSyncedAt, configured, cloudRevision, hasUnsyncedChanges, conflict,
     localBackups, cloudBackups, backupsLoading, addTask, updateTask, deleteTask, addProject, updateProject, deleteProject, toggleTask,
-    addTransaction, updateTransaction, deleteTransaction, addAccount, updateAccount, deleteAccount, addHabit, updateHabit, deleteHabit, logHabit, cyclePrayer, addNote, updateNote, deleteNote, addBudget, updateBudget, deleteBudget, saveReview, resetData, syncNow,
+    addTransaction, updateTransaction, deleteTransaction, addAccount, updateAccount, deleteAccount, addHabit, updateHabit, deleteHabit, logHabit, cyclePrayer, updatePrayerSettings, addNote, updateNote, deleteNote, addBudget, updateBudget, deleteBudget, saveReview, resetData, syncNow,
     initializeCloud, acceptCloudConflict, keepDeviceConflict, importData, createManualBackup, restoreLocalBackup,
     deleteLocalBackup, refreshCloudBackups, restoreCloudBackup
   ]);

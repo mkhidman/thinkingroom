@@ -39,9 +39,10 @@ export const QuickCaptureModal = ({ open, onClose }: QuickCaptureModalProps) => 
 
   const canSubmit = useMemo(() => {
     if (!title.trim()) return false;
-    if (type === 'expense') return Number(amount) > 0 && Boolean(accountId);
+    if (type === 'expense') return Number(amount) > 0 && Boolean(accountId) && Boolean(date);
+    if (type === 'task') return Boolean(date);
     return true;
-  }, [title, type, amount, accountId]);
+  }, [title, type, amount, accountId, date]);
 
   const resetAndClose = () => {
     setTitle('');
@@ -126,10 +127,12 @@ export const QuickCaptureModal = ({ open, onClose }: QuickCaptureModalProps) => 
             </select>
           </label>
         )}
-        <label className="field">
-          <span>Tanggal</span>
-          <input type="date" value={date} onChange={(event) => setDate(event.target.value)} />
-        </label>
+        {type !== 'note' && (
+          <label className="field">
+            <span>Tanggal</span>
+            <input required type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+          </label>
+        )}
 
         {type === 'expense' && (
           <>

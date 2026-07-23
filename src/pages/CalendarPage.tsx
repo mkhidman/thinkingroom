@@ -1,15 +1,20 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   addDays,
+  addMonths,
   endOfDay,
   format,
   isSameDay,
   startOfDay,
-  startOfWeek
+  startOfWeek,
+  subDays,
+  subMonths
 } from 'date-fns';
 import { id } from 'date-fns/locale';
 import {
   CalendarDays,
+  ChevronLeft,
+  ChevronRight,
   Check,
   ExternalLink,
   Link2,
@@ -23,6 +28,7 @@ import {
 import type { GoogleCalendarEvent, GoogleCalendarInfo } from '../types';
 import { useCalendarStore } from '../store/CalendarStore';
 import { useAuthStore } from '../store/AuthStore';
+import { consumePendingFocus, setPendingFocus } from '../lib/navigation';
 
 type CalendarView = 'today' | 'week' | 'agenda';
 
@@ -33,11 +39,29 @@ const eventTimeLabel = (event: GoogleCalendarEvent) => {
   return `${format(start, 'HH.mm')}–${format(end, 'HH.mm')}`;
 };
 
-const groupEvents = (events: GoogleCalendarEvent[]) => {
+const groupEvents = (
+  events: GoogleCalendarEvent[],
+  range: { start: Date; end: Date }
+) => {
   const groups = new Map<string, GoogleCalendarEvent[]>();
   events.forEach((event) => {
-    const key = format(new Date(event.startAt), 'yyyy-MM-dd');
-    groups.set(key, [...(groups.get(key) ?? []), event]);
+    const eventStart = event.allDay
+      ? new Date(`${event.startAt.slice(0, 10)}T00:00:00`)
+      : new Date(event.startAt);
+    const eventEnd = event.allDay
+      ? new Date(`${event.endAt.slice(0, 10)}T00:00:00`)
+      : new Date(event.endAt);
+    const startMs = Math.max(eventStart.getTime(), range.start.getTime());
+    // Google memakai end eksklusif untuk all-day event.
+    const endMs = Math.min(eventEnd.getTime() - 1, range.end.getTime());
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs < startMs) return;
+    let cursor = startOfDay(new Date(startMs));
+    const lastDay = startOfDay(new Date(endMs));
+    while (cursor.getTime() <= lastDay.getTime()) {
+      const key = format(cursor, 'yyyy-MM-dd');
+      groups.set(key, [...(groups.get(key) ?? []), event]);
+      cursor = addDays(cursor, 1);
+    }
   });
   return Array.from(groups.entries()).sort(([a], [b]) => a.localeCompare(b));
 };
@@ -54,25 +78,54 @@ export const CalendarPage = () => {
   const calendarStore = useCalendarStore();
   const auth = useAuthStore();
   const [view, setView] = useState<CalendarView>('week');
+  const [anchorDate, setAnchorDate] = useState(() => new Date());
   const [disconnecting, setDisconnecting] = useState(false);
   const now = new Date();
   const range = useMemo(() => {
-    if (view === 'today') return { start: startOfDay(now), end: endOfDay(now) };
+    if (view === 'today') return { start: startOfDay(anchorDate), end: endOfDay(anchorDate) };
     if (view === 'week') {
-      const start = startOfWeek(now, { weekStartsOn: 1 });
+      const start = startOfWeek(anchorDate, { weekStartsOn: 1 });
       return { start, end: endOfDay(addDays(start, 6)) };
     }
-    return { start: startOfDay(now), end: endOfDay(addDays(now, 30)) };
-  }, [view]);
+    return { start: startOfDay(anchorDate), end: endOfDay(addDays(anchorDate, 29)) };
+  }, [view, anchorDate]);
   const visibleEvents = useMemo(
     () => calendarStore.eventsBetween(range.start, range.end),
     [calendarStore, range.start, range.end]
   );
-  const grouped = useMemo(() => groupEvents(visibleEvents), [visibleEvents]);
+  const grouped = useMemo(() => groupEvents(visibleEvents, range), [visibleEvents, range]);
   const calendarMap = useMemo(
     () => new Map(calendarStore.calendars.map((calendar) => [calendar.id, calendar])),
     [calendarStore.calendars]
   );
+
+  useEffect(() => {
+    const focusId = consumePendingFocus('calendar');
+    if (!focusId) return;
+    const event = calendarStore.events.find((item) => item.id === focusId);
+    if (!event) {
+      if (calendarStore.status === 'loading' || calendarStore.status === 'idle') {
+        setPendingFocus('calendar', focusId);
+      }
+      return;
+    }
+    setAnchorDate(event.allDay
+      ? new Date(`${event.startAt.slice(0, 10)}T12:00:00`)
+      : new Date(event.startAt));
+    setView('today');
+  }, [calendarStore.events, calendarStore.status]);
+
+  const moveRange = (direction: -1 | 1) => {
+    setAnchorDate((current) => {
+      if (view === 'today') return direction === 1 ? addDays(current, 1) : subDays(current, 1);
+      if (view === 'week') return direction === 1 ? addDays(current, 7) : subDays(current, 7);
+      return direction === 1 ? addMonths(current, 1) : subMonths(current, 1);
+    });
+  };
+
+  const rangeLabel = view === 'today'
+    ? format(range.start, 'd MMMM yyyy', { locale: id })
+    : `${format(range.start, 'd MMM', { locale: id })} – ${format(range.end, 'd MMM yyyy', { locale: id })}`;
 
   if (!calendarStore.connection.connected) {
     return (
@@ -154,11 +207,18 @@ export const CalendarPage = () => {
 
         <section className="panel calendar-agenda-panel">
           <div className="calendar-agenda-header">
-            <div><h3>Agenda</h3><p>{visibleEvents.length} event pada rentang yang dipilih.</p></div>
-            <div className="segmented-control calendar-view-tabs">
-              <button className={view === 'today' ? 'active' : ''} onClick={() => setView('today')}>Hari ini</button>
-              <button className={view === 'week' ? 'active' : ''} onClick={() => setView('week')}>Minggu</button>
-              <button className={view === 'agenda' ? 'active' : ''} onClick={() => setView('agenda')}>30 hari</button>
+            <div><h3>Agenda</h3><p>{visibleEvents.length} event · {rangeLabel}</p></div>
+            <div className="calendar-navigation">
+              <div className="calendar-range-buttons">
+                <button className="icon-button" onClick={() => moveRange(-1)} aria-label="Rentang sebelumnya"><ChevronLeft size={17} /></button>
+                <button className="secondary-button" onClick={() => setAnchorDate(new Date())}>Hari ini</button>
+                <button className="icon-button" onClick={() => moveRange(1)} aria-label="Rentang berikutnya"><ChevronRight size={17} /></button>
+              </div>
+              <div className="segmented-control calendar-view-tabs" role="tablist" aria-label="Tampilan kalender">
+                <button role="tab" aria-selected={view === 'today'} className={view === 'today' ? 'active' : ''} onClick={() => setView('today')}>Hari</button>
+                <button role="tab" aria-selected={view === 'week'} className={view === 'week' ? 'active' : ''} onClick={() => setView('week')}>Minggu</button>
+                <button role="tab" aria-selected={view === 'agenda'} className={view === 'agenda' ? 'active' : ''} onClick={() => setView('agenda')}>30 hari</button>
+              </div>
             </div>
           </div>
 

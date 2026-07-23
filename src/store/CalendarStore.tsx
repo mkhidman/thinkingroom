@@ -63,7 +63,16 @@ const loadCache = (userId: string): CalendarCache | null => {
 };
 
 const saveCache = (userId: string, cache: CalendarCache) => {
-  try { localStorage.setItem(`${CACHE_PREFIX}:${userId}`, JSON.stringify(cache)); } catch { /* Cache hanya optimasi offline. */ }
+  const privacySafeCache: CalendarCache = {
+    ...cache,
+    events: cache.events.map((event) => ({
+      ...event,
+      description: undefined,
+      location: undefined,
+      organizerEmail: undefined
+    }))
+  };
+  try { localStorage.setItem(`${CACHE_PREFIX}:${userId}`, JSON.stringify(privacySafeCache)); } catch { /* Cache hanya optimasi offline. */ }
 };
 
 const createRange = () => ({
@@ -105,10 +114,13 @@ export const CalendarStoreProvider = ({ children }: PropsWithChildren) => {
       return;
     }
 
-    const [calendarRows, eventRows] = await Promise.all([
-      fetchGoogleCalendars(auth.session),
-      fetchGoogleCalendarEvents(auth.session, rangeRef.current.start, rangeRef.current.end)
-    ]);
+    const calendarRows = await fetchGoogleCalendars(auth.session);
+    const eventRows = await fetchGoogleCalendarEvents(
+      auth.session,
+      rangeRef.current.start,
+      rangeRef.current.end,
+      calendarRows.filter((calendar) => calendar.isVisible).map((calendar) => calendar.id)
+    );
     setCalendars(calendarRows);
     setEvents(eventRows);
     setStatus('connected');
@@ -243,16 +255,19 @@ export const CalendarStoreProvider = ({ children }: PropsWithChildren) => {
   const toggleCalendar = useCallback(async (calendarId: string, visible: boolean) => {
     if (!auth.session) return;
     const previous = calendars;
-    setCalendars((items) => items.map((item) => item.id === calendarId ? { ...item, isVisible: visible } : item));
+    const next = calendars.map((item) => item.id === calendarId ? { ...item, isVisible: visible } : item);
+    setCalendars(next);
+    saveCache(auth.session.user.id, { connection, calendars: next, events });
     try {
       await setGoogleCalendarVisibility(auth.session, calendarId, visible);
       if (visible) await syncNow();
     } catch (toggleError) {
       setCalendars(previous);
+      saveCache(auth.session.user.id, { connection, calendars: previous, events });
       setError(readableError(toggleError));
       throw toggleError;
     }
-  }, [auth.session, calendars, syncNow]);
+  }, [auth.session, calendars, connection, events, syncNow]);
 
   const visibleCalendarIds = useMemo(
     () => new Set(calendars.filter((calendar) => calendar.isVisible).map((calendar) => calendar.id)),
@@ -261,8 +276,12 @@ export const CalendarStoreProvider = ({ children }: PropsWithChildren) => {
 
   const eventsBetween = useCallback((start: Date, end: Date) => events.filter((event) => {
     if (!visibleCalendarIds.has(event.calendarId)) return false;
-    const eventStart = new Date(event.startAt).getTime();
-    const eventEnd = new Date(event.endAt).getTime();
+    const eventStart = event.allDay
+      ? new Date(`${event.startAt.slice(0, 10)}T00:00:00`).getTime()
+      : new Date(event.startAt).getTime();
+    const eventEnd = event.allDay
+      ? new Date(`${event.endAt.slice(0, 10)}T00:00:00`).getTime()
+      : new Date(event.endAt).getTime();
     return eventStart < end.getTime() && eventEnd > start.getTime();
   }), [events, visibleCalendarIds]);
 

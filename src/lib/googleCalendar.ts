@@ -80,21 +80,37 @@ export const fetchGoogleCalendars = async (session: AuthSession): Promise<Google
 export const fetchGoogleCalendarEvents = async (
   session: AuthSession,
   rangeStart: string,
-  rangeEnd: string
+  rangeEnd: string,
+  visibleCalendarIds: string[] = []
 ): Promise<GoogleCalendarEvent[]> => {
-  const query = new URLSearchParams({
-    select: 'id,calendar_id,google_event_id,title,description,location,html_link,conference_link,start_at,end_at,all_day,status,organizer_email,attendees_count,recurring_event_id,updated_at_google',
-    start_at: `lt.${rangeEnd}`,
-    end_at: `gt.${rangeStart}`,
-    status: 'neq.cancelled',
-    order: 'start_at.asc',
-    limit: '1000'
-  });
-  const response = await fetch(`${supabaseUrl}/rest/v1/google_calendar_events?${query.toString()}`, {
-    headers: baseHeaders(session)
-  });
-  if (!response.ok) throw new Error(await getErrorMessage(response));
-  const rows = await response.json() as Array<Record<string, unknown>>;
+  if (visibleCalendarIds.length === 0) return [];
+  const pageSize = 500;
+  const maxEvents = 20_000;
+  const rows: Array<Record<string, unknown>> = [];
+
+  for (let offset = 0; offset < maxEvents; offset += pageSize) {
+    const query = new URLSearchParams({
+      select: 'id,calendar_id,google_event_id,title,description,location,html_link,conference_link,start_at,end_at,all_day,status,organizer_email,attendees_count,recurring_event_id,updated_at_google',
+      calendar_id: `in.(${visibleCalendarIds.join(',')})`,
+      start_at: `lt.${rangeEnd}`,
+      end_at: `gt.${rangeStart}`,
+      status: 'neq.cancelled',
+      order: 'start_at.asc',
+      limit: String(pageSize),
+      offset: String(offset)
+    });
+    const response = await fetch(`${supabaseUrl}/rest/v1/google_calendar_events?${query.toString()}`, {
+      headers: baseHeaders(session)
+    });
+    if (!response.ok) throw new Error(await getErrorMessage(response));
+    const page = await response.json() as Array<Record<string, unknown>>;
+    rows.push(...page);
+    if (page.length < pageSize) break;
+    if (offset + pageSize >= maxEvents) {
+      throw new Error('Agenda terlalu besar untuk dimuat sekaligus. Persempit rentang kalender.');
+    }
+  }
+
   return rows.map((row) => ({
     id: String(row.id),
     calendarId: String(row.calendar_id),

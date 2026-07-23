@@ -202,13 +202,11 @@ const syncOneCalendar = async (userId: string, accessToken: string, calendar: Ca
   }
 
   const upserts: Array<Record<string, unknown>> = [];
+  const cancelledEventIds: string[] = [];
   for (const event of result.items) {
     if (!event.id) continue;
     if (event.status === 'cancelled') {
-      await deleteRows(
-        'google_calendar_events',
-        `user_id=eq.${encodeURIComponent(userId)}&calendar_id=eq.${encodeURIComponent(calendar.id)}&google_event_id=eq.${encodeURIComponent(event.id)}`
-      );
+      cancelledEventIds.push(event.id);
       continue;
     }
     const now = new Date();
@@ -237,8 +235,16 @@ const syncOneCalendar = async (userId: string, accessToken: string, calendar: Ca
     });
   }
 
-  if (upserts.length) {
-    await insertRows('google_calendar_events', upserts, {
+  for (let index = 0; index < cancelledEventIds.length; index += 100) {
+    const ids = cancelledEventIds.slice(index, index + 100).map(encodeURIComponent).join(',');
+    await deleteRows(
+      'google_calendar_events',
+      `user_id=eq.${encodeURIComponent(userId)}&calendar_id=eq.${encodeURIComponent(calendar.id)}&google_event_id=in.(${ids})`
+    );
+  }
+
+  for (let index = 0; index < upserts.length; index += 250) {
+    await insertRows('google_calendar_events', upserts.slice(index, index + 250), {
       onConflict: 'user_id,calendar_id,google_event_id'
     });
   }
@@ -292,6 +298,16 @@ Deno.serve(async (request) => {
       return jsonResponse(request, { disconnected: true });
     }
 
+    const lastSyncAt = connection.last_synced_at ? new Date(connection.last_synced_at).getTime() : 0;
+    if (Date.now() - lastSyncAt < 30_000) {
+      return jsonResponse(request, {
+        calendars: 0,
+        events: 0,
+        syncedAt: connection.last_synced_at,
+        throttled: true
+      });
+    }
+
     let accessToken: string;
     try {
       const token = await refreshGoogleAccessToken(refreshToken);
@@ -310,11 +326,16 @@ Deno.serve(async (request) => {
       await syncCalendarList(user.id, accessToken, connection);
       const calendars = await selectRows<CalendarRow>(
         'google_calendars',
-        `user_id=eq.${encodeURIComponent(user.id)}&is_visible=eq.true&deleted_at=is.null&select=id,user_id,google_calendar_id,summary,is_visible,is_primary,sync_token&order=is_primary.desc&limit=12`
+        `user_id=eq.${encodeURIComponent(user.id)}&is_visible=eq.true&deleted_at=is.null&select=id,user_id,google_calendar_id,summary,is_visible,is_primary,sync_token&order=is_primary.desc`
       );
       let eventCount = 0;
-      for (const calendar of calendars) {
-        eventCount += await syncOneCalendar(user.id, accessToken, calendar);
+      // Batasi concurrency agar sinkron banyak kalender lebih cepat tanpa
+      // membanjiri Google API atau koneksi database.
+      for (let index = 0; index < calendars.length; index += 3) {
+        const counts = await Promise.all(
+          calendars.slice(index, index + 3).map((calendar) => syncOneCalendar(user.id, accessToken, calendar))
+        );
+        eventCount += counts.reduce((sum, count) => sum + count, 0);
       }
       const syncedAt = new Date().toISOString();
       await updateRows('google_calendar_connections', `user_id=eq.${encodeURIComponent(user.id)}`, {

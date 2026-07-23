@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Archive, CalendarClock, FolderKanban, Plus, Repeat2, Settings2, TimerReset } from 'lucide-react';
 import { useAppStore } from '../store/AppStore';
 import { TaskRow } from '../components/TaskRow';
@@ -13,6 +13,7 @@ import {
   isTaskUpcoming,
   taskNeedsAttentionToday
 } from '../lib/taskTracking';
+import { consumePendingFocus } from '../lib/navigation';
 
 type TaskFilter = 'today' | 'deferred' | 'upcoming' | 'unscheduled' | 'overdue' | TaskStatus;
 
@@ -33,6 +34,16 @@ export const TasksPage = () => {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [projectManagerOpen, setProjectManagerOpen] = useState(false);
   const now = new Date();
+
+  useEffect(() => {
+    const focusId = consumePendingFocus('tasks');
+    if (!focusId) return;
+    const task = data.tasks.find((item) => item.id === focusId);
+    if (task) {
+      setEditingTask(task);
+      setTaskModalOpen(true);
+    }
+  }, [data.tasks]);
 
   const filteredTasks = useMemo(() => {
     return data.tasks

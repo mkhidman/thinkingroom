@@ -2,7 +2,7 @@
 
 Ruang adalah web app/PWA pribadi untuk menghimpun tugas, proyek, jadwal Google Calendar, habit, tracker sholat, catatan, review mingguan, dan keuangan dalam satu alur.
 
-Versi saat ini: **0.5.2 — Tugas tertunda tidak lagi menghilang**.
+Versi saat ini: **0.6.0 — Reliability, calendar, dan flow hardening**.
 
 ## Typography
 

@@ -831,6 +831,159 @@ kbd { padding: 3px 6px; border: 1px solid rgba(255,255,255,.15); border-radius: 
 .schedule-deferred { color: var(--amber) !important; font-weight: 700; }
 .task-quick-actions { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
 .task-quick-actions button { border: 1px solid #d9e2ec; border-radius: 8px; padding: 6px 8px; background: var(--surface); color: var(--brand); display: inline-flex; align-items: center; gap: 5px; font-size: 8px; font-weight: 700; }
+
+/* Readability and interaction baseline */
+.panel-header p,
+.item-meta,
+.project-pill,
+.priority,
+.plain-list,
+.habit-identity span,
+.routine-card span,
+.routine-card button,
+.note-card-top small,
+.note-card > p,
+.note-card-footer > span,
+.transaction-copy span,
+.budget-row span,
+.bill-list span,
+.review-metrics span,
+.project-review-list span,
+.empty-state p,
+.modal-header p,
+.segmented-control button,
+.field > span,
+.field input,
+.field select,
+.field textarea,
+.toggle-row span,
+.weekday-picker button,
+.form-hint,
+.command-caption,
+.command-results > button span,
+.command-results > button small,
+.validation-message,
+.calendar-toolbar p,
+.calendar-source-row small,
+.calendar-source-note,
+.calendar-agenda-header p,
+.calendar-event-copy > p,
+.calendar-event-meta,
+.today-calendar-item span,
+.task-quick-actions button {
+  font-size: 11px;
+}
+
+.task-check {
+  width: 34px;
+  height: 34px;
+  flex-basis: 34px;
+  margin-top: -5px;
+}
+
+.row-action-button {
+  width: 36px;
+  height: 36px;
+}
+
+.habit-day-cell {
+  width: 36px;
+  height: 36px;
+  font-size: 11px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 3px solid rgba(0, 91, 172, .28);
+  outline-offset: 2px;
+}
+
+.subtask-editor { display: grid; gap: 8px; padding: 14px; border-top: 1px solid var(--line); background: var(--surface-soft); }
+.subtask-editor-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+.subtask-editor-row > input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--brand); }
+.subtask-editor-row > input:not([type="checkbox"]),
+.subtask-add-row > input { width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px; background: #fff; color: var(--text); font-size: 12px; }
+.subtask-add-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+
+.calendar-navigation,
+.calendar-range-buttons { display: flex; align-items: center; gap: 7px; }
+.calendar-navigation { flex-wrap: wrap; justify-content: flex-end; }
+.calendar-navigation .segmented-control { margin-bottom: 0; }
+
+.pagination-controls { padding-top: 14px; display: flex; align-items: center; justify-content: center; gap: 12px; color: var(--muted); font-size: 11px; }
+.month-selector-card { display: flex; flex-direction: column; justify-content: center; }
+.month-selector { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; text-align: center; }
+.month-selector span { display: block; color: var(--muted); font-size: 11px; }
+.month-selector strong { display: block; margin-top: 3px; color: var(--text); font-size: 14px; }
+
+.review-history-select { min-width: 190px; position: relative; z-index: 1; display: grid; gap: 5px; }
+.review-history-select span { color: rgba(255,255,255,.75); font-size: 11px; font-weight: 700; }
+.review-history-select select { width: 100%; border: 1px solid rgba(255,255,255,.3); border-radius: 10px; padding: 9px 10px; color: #fff; background: rgba(255,255,255,.12); }
+.review-history-select option { color: var(--text); background: #fff; }
+
+.habit-log-presets { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; }
+
+.fatal-error-shell { min-height: 100vh; padding: 24px; display: grid; place-items: center; background: var(--canvas); }
+.fatal-error-card { width: min(560px, 100%); padding: 28px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); box-shadow: var(--shadow); }
+.fatal-error-card > svg { color: var(--red); }
+.fatal-error-card h1 { margin: 14px 0 8px; font-size: 24px; }
+.fatal-error-card p { color: var(--muted); line-height: 1.6; }
+.fatal-error-card details { margin: 16px 0; color: var(--muted); }
+.fatal-error-card pre { max-height: 160px; overflow: auto; white-space: pre-wrap; }
+
+@media (max-width: 680px) {
+  .task-check,
+  .row-action-button,
+  .habit-day-cell {
+    min-width: 44px;
+    width: 44px;
+    height: 44px;
+  }
+
+  .task-check { flex-basis: 44px; }
+  .calendar-agenda-header { align-items: stretch; }
+  .calendar-navigation { justify-content: flex-start; }
+  .review-history-select { width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+.pwa-update-banner {
+  position: fixed;
+  z-index: 150;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  width: min(520px, calc(100% - 32px));
+  padding: 11px 12px 11px 15px;
+  border: 1px solid rgba(255,255,255,.25);
+  border-radius: 14px;
+  color: #fff;
+  background: var(--brand-dark);
+  box-shadow: 0 16px 45px rgba(14,30,51,.28);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pwa-update-banner span { min-width: 0; flex: 1; font-size: 12px; }
+.pwa-update-banner button { border: 0; border-radius: 9px; padding: 8px 10px; color: var(--brand-dark); background: #fff; font-weight: 700; }
+.pwa-update-banner button:last-child { width: 34px; padding-inline: 0; color: #fff; background: rgba(255,255,255,.12); }
+.auth-link-button { width: 100%; margin-top: 10px; border: 0; padding: 6px; color: var(--brand); background: transparent; font-size: 11px; font-weight: 700; }
+.page-loading-inline { min-height: 240px; display: grid; place-items: center; color: var(--muted); font-size: 12px; }
+.data-danger-zone { border-color: #efcaca; background: #fffafa; }
 .task-quick-actions button:hover { border-color: #b9cfe4; background: var(--brand-soft); }
 
 @media (max-width: 420px) {

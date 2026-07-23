@@ -3,6 +3,7 @@ import { createId } from './id';
 import type { Account, AppData, Transaction } from '../types';
 
 export const BACKUP_SCHEMA_VERSION = 1;
+export const MAX_BACKUP_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_LOCAL_BACKUPS = 10;
 const BACKUP_KEY = 'ruang-life-os-backups-v1';
 
@@ -38,7 +39,7 @@ const downloadBlob = (blob: Blob, filename: string) => {
 export const createBackupEnvelope = (data: AppData): RuangBackupFile => ({
   product: 'ruang-personal-life-os',
   schemaVersion: BACKUP_SCHEMA_VERSION,
-  appVersion: '0.4.0',
+  appVersion: '0.6.0',
   exportedAt: new Date().toISOString(),
   data
 });
@@ -78,6 +79,9 @@ export const downloadTransactionsCsv = (transactions: Transaction[], accounts: A
 };
 
 export const parseBackupFile = async (file: File): Promise<RuangBackupFile> => {
+  if (file.size > MAX_BACKUP_FILE_BYTES) {
+    throw new Error('Ukuran backup melebihi batas 10 MB.');
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(await file.text()) as unknown;

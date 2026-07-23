@@ -1,23 +1,32 @@
-import { useMemo, useState } from 'react';
-import { endOfWeek, format, isWithinInterval, parseISO, startOfWeek } from 'date-fns';
+import { useEffect, useMemo, useState } from 'react';
+import { endOfDay, endOfWeek, format, isWithinInterval, parseISO, startOfWeek } from 'date-fns';
 import { id } from 'date-fns/locale';
-import { CheckCircle2, CircleDollarSign, MoonStar, Save, Target, Trash2 } from 'lucide-react';
+import { CheckCircle2, CircleDollarSign, MoonStar, Save, Target } from 'lucide-react';
 import { useAppStore } from '../store/AppStore';
 import { formatCurrency, toDayKey, toMonthKey } from '../lib/format';
 import { getMonthTotals } from '../lib/finance';
 
 export const ReviewPage = () => {
-  const { data, saveReview, resetData } = useAppStore();
+  const { data, saveReview } = useAppStore();
   const now = new Date();
-  const weekStart = startOfWeek(now, { weekStartsOn: 1 });
-  const weekEnd = endOfWeek(now, { weekStartsOn: 1 });
-  const weekKey = format(weekStart, 'yyyy-MM-dd');
+  const currentWeekKey = format(startOfWeek(now, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+  const [weekKey, setWeekKey] = useState(currentWeekKey);
+  const weekStart = parseISO(weekKey);
+  const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
   const existing = data.reviews.find((review) => review.weekKey === weekKey);
   const [wins, setWins] = useState(existing?.wins ?? '');
   const [obstacles, setObstacles] = useState(existing?.obstacles ?? '');
   const [stopDoing, setStopDoing] = useState(existing?.stopDoing ?? '');
   const [nextFocus, setNextFocus] = useState(existing?.nextFocus ?? '');
   const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setWins(existing?.wins ?? '');
+    setObstacles(existing?.obstacles ?? '');
+    setStopDoing(existing?.stopDoing ?? '');
+    setNextFocus(existing?.nextFocus ?? '');
+    setSaved(false);
+  }, [weekKey, existing?.updatedAt]);
 
   const completedTasks = data.tasks.filter((task) => task.completedAt && isWithinInterval(parseISO(task.completedAt), { start: weekStart, end: weekEnd }));
   const habitStats = useMemo(() => {
@@ -27,6 +36,7 @@ export const ReviewPage = () => {
       for (let index = 0; index < 7; index += 1) {
         const date = new Date(weekStart);
         date.setDate(weekStart.getDate() + index);
+        if (date.getTime() > endOfDay(now).getTime()) continue;
         if (!habit.daysOfWeek.includes(date.getDay())) continue;
         scheduled += 1;
         if ((habit.logs[toDayKey(date)] ?? 0) >= habit.targetValue) completed += 1;
@@ -35,16 +45,15 @@ export const ReviewPage = () => {
     return { scheduled, completed };
   }, [data.habits, weekStart]);
   const prayerCount = data.prayers.filter((prayer) => prayer.status !== 'belum' && isWithinInterval(parseISO(`${prayer.date}T12:00:00`), { start: weekStart, end: weekEnd })).length;
-  const financeTotals = getMonthTotals(data.transactions, toMonthKey(now));
+  const financeTotals = getMonthTotals(data.transactions, toMonthKey(weekStart));
   const stalledProjects = data.projects.filter((project) => {
+    if (project.status !== 'active') return false;
     const active = data.tasks.filter((task) => task.projectId === project.id && task.status === 'todo');
     return active.length > 0 && active.every((task) => !task.dueAt);
   });
 
-  const clearAllData = () => {
-    if (!window.confirm('Hapus seluruh data aplikasi? Backup otomatis akan dibuat sebelum penghapusan.')) return;
-    resetData();
-  };
+  const reviewOptions = Array.from(new Set([currentWeekKey, ...data.reviews.map((review) => review.weekKey)]))
+    .sort((a, b) => b.localeCompare(a));
 
   const submit = () => {
     saveReview({ weekKey, wins, obstacles, stopDoing, nextFocus, updatedAt: new Date().toISOString() });
@@ -56,7 +65,18 @@ export const ReviewPage = () => {
     <div className="page-stack">
       <section className="review-intro">
         <div><span className="eyebrow">{format(weekStart, 'd MMM', { locale: id })} – {format(weekEnd, 'd MMM yyyy', { locale: id })}</span><h2>Review bukan penilaian diri.</h2><p>Tujuannya menemukan pola, keputusan yang perlu dibuat, dan fokus realistis untuk minggu berikutnya.</p></div>
-        <button className="danger-button" onClick={clearAllData}><Trash2 size={16} /> Hapus seluruh data</button>
+        <label className="review-history-select">
+          <span>Minggu review</span>
+          <select value={weekKey} onChange={(event) => setWeekKey(event.target.value)}>
+            {reviewOptions.map((key) => (
+              <option key={key} value={key}>
+                {key === currentWeekKey
+                  ? 'Minggu ini'
+                  : `${format(parseISO(key), 'd MMM', { locale: id })} – ${format(endOfWeek(parseISO(key), { weekStartsOn: 1 }), 'd MMM yyyy', { locale: id })}`}
+              </option>
+            ))}
+          </select>
+        </label>
       </section>
 
       <section className="review-metrics">
@@ -82,7 +102,7 @@ export const ReviewPage = () => {
           <section className="panel">
             <div className="panel-header"><div><h3>Proyek yang perlu diperhatikan</h3><p>Data diarahkan menjadi keputusan, bukan hanya statistik.</p></div></div>
             <div className="project-review-list">
-              {data.projects.map((project) => {
+              {data.projects.filter((project) => project.status === 'active').map((project) => {
                 const active = data.tasks.filter((task) => task.projectId === project.id && task.status !== 'done').length;
                 const completed = completedTasks.filter((task) => task.projectId === project.id).length;
                 return <article key={project.id}><i style={{ background: project.color }} /><div><strong>{project.name}</strong><span>{active} aktif · {completed} selesai minggu ini</span></div></article>;

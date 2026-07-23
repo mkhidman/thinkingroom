@@ -4,6 +4,7 @@ import { useAppStore } from '../store/AppStore';
 import { Modal } from '../components/Modal';
 import type { Note, NoteType } from '../types';
 import { formatDate } from '../lib/format';
+import { consumePendingFocus } from '../lib/navigation';
 
 export const NotesPage = () => {
   const { data, addNote, updateNote, deleteNote } = useAppStore();
@@ -16,6 +17,16 @@ export const NotesPage = () => {
   const [type, setType] = useState<NoteType>('note');
   const [projectId, setProjectId] = useState('');
   const [tags, setTags] = useState('');
+
+  useEffect(() => {
+    const focusId = consumePendingFocus('notes');
+    if (!focusId) return;
+    const note = data.notes.find((item) => item.id === focusId);
+    if (note) {
+      setEditingNote(note);
+      setModalOpen(true);
+    }
+  }, [data.notes]);
 
   useEffect(() => {
     if (!modalOpen) return;
@@ -36,11 +47,13 @@ export const NotesPage = () => {
 
   const notes = useMemo(() => {
     const normalized = query.trim().toLowerCase();
-    return data.notes.filter((note) => {
-      const matchesType = filter === 'all' || note.type === filter;
-      const matchesQuery = !normalized || `${note.title} ${note.content} ${note.tags.join(' ')}`.toLowerCase().includes(normalized);
-      return matchesType && matchesQuery;
-    });
+    return data.notes
+      .filter((note) => {
+        const matchesType = filter === 'all' || note.type === filter;
+        const matchesQuery = !normalized || `${note.title} ${note.content} ${note.tags.join(' ')}`.toLowerCase().includes(normalized);
+        return matchesType && matchesQuery;
+      })
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }, [data.notes, filter, query]);
 
   const openNew = () => {

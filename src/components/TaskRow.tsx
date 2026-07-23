@@ -20,7 +20,11 @@ export const TaskRow = ({ task, project, onToggle, onEdit, onDelete, onScheduleT
 
   return (
     <div className={`task-row ${compact ? 'compact-row' : ''} ${overdue ? 'task-overdue' : ''} ${scheduleDeferred ? 'task-deferred' : ''}`}>
-      <button className={`task-check ${task.status === 'done' ? 'done' : ''}`} onClick={onToggle} aria-label="Tandai selesai">
+      <button
+        className={`task-check ${task.status === 'done' ? 'done' : ''}`}
+        onClick={onToggle}
+        aria-label={task.status === 'done' ? 'Buka kembali tugas' : 'Tandai tugas selesai'}
+      >
         {task.status === 'done' && <Check size={14} />}
       </button>
       <div className="task-copy">
@@ -34,6 +38,7 @@ export const TaskRow = ({ task, project, onToggle, onEdit, onDelete, onScheduleT
             </span>
           )}
           {task.estimateMinutes && <span>{task.estimateMinutes} menit</span>}
+          {task.subtasks.length > 0 && <span>{task.subtasks.filter((subtask) => subtask.done).length}/{task.subtasks.length} subtask</span>}
           {task.recurrence && <span><Repeat2 size={12} /> setiap {task.recurrence.interval} {task.recurrence.frequency === 'daily' ? 'hari' : task.recurrence.frequency === 'weekly' ? 'minggu' : 'bulan'}</span>}
         </div>
         {onScheduleToday && task.status === 'todo' && (

@@ -5,7 +5,7 @@ const parseTaskDate = (value?: string) => value ? parseISO(value) : null;
 
 export const isTaskDeadlineOverdue = (task: Task, now = new Date()) => {
   const deadline = parseTaskDate(task.deadlineAt);
-  return task.status === 'todo' && Boolean(deadline && isBefore(deadline, now));
+  return task.status !== 'done' && Boolean(deadline && isBefore(deadline, now));
 };
 
 export const isTaskScheduledToday = (task: Task, now = new Date()) => {
@@ -36,7 +36,7 @@ export const isTaskUnscheduled = (task: Task) => (
  * jadwal terlewat dan deadline terlewat tidak boleh menghilang dari UI.
  */
 export const taskNeedsAttentionToday = (task: Task, now = new Date()) => {
-  if (task.status !== 'todo') return false;
+  if (task.status === 'done') return false;
   return (
     isTaskScheduledToday(task, now)
     || isTaskDeadlineToday(task, now)

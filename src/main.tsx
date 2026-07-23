@@ -5,6 +5,7 @@ import App from './App';
 import { AuthStoreProvider } from './store/AuthStore';
 import { AppStoreProvider } from './store/AppStore';
 import { CalendarStoreProvider } from './store/CalendarStore';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import './styles.css';
 
 // Saat development, jangan biarkan service worker build lama mencegat localhost
@@ -17,17 +18,27 @@ if (import.meta.env.DEV && 'serviceWorker' in navigator) {
     void caches.keys().then((keys) => Promise.all(keys.map((key) => caches.delete(key))));
   }
 } else {
-  registerSW({ immediate: true });
+  let applyServiceWorkerUpdate: ((reloadPage?: boolean) => Promise<void>) | undefined;
+  applyServiceWorkerUpdate = registerSW({
+    immediate: true,
+    onNeedRefresh: () => {
+      window.dispatchEvent(new CustomEvent('ruang:pwa-update', {
+        detail: { update: () => applyServiceWorkerUpdate?.(true) }
+      }));
+    }
+  });
 }
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AuthStoreProvider>
-      <AppStoreProvider>
-        <CalendarStoreProvider>
-          <App />
-        </CalendarStoreProvider>
-      </AppStoreProvider>
-    </AuthStoreProvider>
+    <ErrorBoundary>
+      <AuthStoreProvider>
+        <AppStoreProvider>
+          <CalendarStoreProvider>
+            <App />
+          </CalendarStoreProvider>
+        </AppStoreProvider>
+      </AuthStoreProvider>
+    </ErrorBoundary>
   </StrictMode>
 );

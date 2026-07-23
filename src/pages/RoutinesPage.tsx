@@ -1,24 +1,37 @@
 import { useState } from 'react';
 import { addDays, format, startOfWeek } from 'date-fns';
 import { id } from 'date-fns/locale';
-import { BellRing, MoonStar, Pencil, Plus, Target, Trash2 } from 'lucide-react';
+import { BellRing, Pencil, Plus, Settings2, Target, Trash2 } from 'lucide-react';
 import { useAppStore } from '../store/AppStore';
 import { HabitModal } from '../components/HabitModal';
+import { HabitLogModal } from '../components/HabitLogModal';
+import { PrayerSettingsModal } from '../components/PrayerSettingsModal';
 import type { Habit, PrayerName } from '../types';
 import { toDayKey } from '../lib/format';
-
-const prayerTimes: Record<PrayerName, string> = {
-  Subuh: '04.42', Dzuhur: '11.57', Ashar: '15.18', Maghrib: '17.53', Isya: '19.04'
-};
+import { calculatePrayerTimes, defaultPrayerSettings } from '../lib/prayerTimes';
 
 export const RoutinesPage = () => {
-  const { data, logHabit, cyclePrayer, deleteHabit } = useAppStore();
+  const { data, logHabit, cyclePrayer, deleteHabit, updatePrayerSettings } = useAppStore();
   const [habitModalOpen, setHabitModalOpen] = useState(false);
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
+  const [loggingHabit, setLoggingHabit] = useState<Habit | null>(null);
+  const [loggingDate, setLoggingDate] = useState(() => new Date());
+  const [prayerSettingsOpen, setPrayerSettingsOpen] = useState(false);
   const today = new Date();
   const todayKey = toDayKey(today);
   const weekStart = startOfWeek(today, { weekStartsOn: 1 });
   const weekDays = Array.from({ length: 7 }, (_, index) => addDays(weekStart, index));
+  const prayerTimes = calculatePrayerTimes(today, data.prayerSettings);
+
+  const editHabitLog = (habit: Habit, date: Date) => {
+    if (habit.metric === 'boolean') {
+      const key = toDayKey(date);
+      logHabit(habit.id, habit.logs[key] ? 0 : 1, date);
+      return;
+    }
+    setLoggingHabit(habit);
+    setLoggingDate(date);
+  };
 
   return (
     <div className="page-stack">
@@ -56,8 +69,8 @@ export const RoutinesPage = () => {
                     <button
                       key={key}
                       className={`habit-day-cell ${complete ? 'complete' : ''} ${!active ? 'inactive' : ''}`}
-                      disabled={key !== todayKey || !active}
-                      onClick={() => logHabit(habit.id)}
+                      disabled={day.getTime() > today.getTime() || !active || habit.paused}
+                      onClick={() => editHabitLog(habit, day)}
                       title={`${value}/${habit.targetValue} ${habit.unit}`}
                     >
                       {complete ? '✓' : value || '·'}
@@ -81,7 +94,7 @@ export const RoutinesPage = () => {
               return (
                 <article key={habit.id} className="routine-card">
                   <div><strong>{habit.name}</strong><span>{current}/{habit.targetValue} {habit.unit} · target {habit.targetPerWeek}x/minggu</span></div>
-                  <button className={complete ? 'complete' : ''} onClick={() => logHabit(habit.id)}>{habit.metric === 'boolean' ? (complete ? 'Selesai' : 'Tandai') : `+1 ${habit.unit}`}</button>
+                  <button className={complete ? 'complete' : ''} onClick={() => editHabitLog(habit, today)}>{habit.metric === 'boolean' ? (complete ? 'Selesai' : 'Tandai') : 'Catat progres'}</button>
                 </article>
               );
             })}
@@ -89,7 +102,10 @@ export const RoutinesPage = () => {
         </section>
 
         <section className="panel">
-          <div className="panel-header"><div><h3>Sholat lima waktu</h3><p>Status ibadah tidak dicampur dengan produktivitas.</p></div><MoonStar size={18} /></div>
+          <div className="panel-header">
+            <div><h3>Sholat lima waktu</h3><p>{data.prayerSettings?.locationName ?? defaultPrayerSettings.locationName} · dihitung di perangkat.</p></div>
+            <button className="row-action-button" onClick={() => setPrayerSettingsOpen(true)} aria-label="Atur lokasi dan metode waktu salat"><Settings2 size={16} /></button>
+          </div>
           <div className="prayer-large-list">
             {(Object.keys(prayerTimes) as PrayerName[]).map((prayer) => {
               const status = data.prayers.find((item) => item.date === todayKey && item.prayer === prayer)?.status ?? 'belum';
@@ -115,6 +131,19 @@ export const RoutinesPage = () => {
       </div>
 
       <HabitModal open={habitModalOpen} habit={editingHabit} onClose={() => { setHabitModalOpen(false); setEditingHabit(null); }} />
+      <HabitLogModal
+        open={Boolean(loggingHabit)}
+        habit={loggingHabit}
+        date={loggingDate}
+        onSave={(value) => { if (loggingHabit) logHabit(loggingHabit.id, value, loggingDate); }}
+        onClose={() => setLoggingHabit(null)}
+      />
+      <PrayerSettingsModal
+        open={prayerSettingsOpen}
+        settings={data.prayerSettings}
+        onSave={updatePrayerSettings}
+        onClose={() => setPrayerSettingsOpen(false)}
+      />
     </div>
   );
 };

@@ -42,9 +42,14 @@ export interface Task {
   reminderAt?: string;
   estimateMinutes?: number;
   labels: string[];
+  billAmount?: number;
+  billAccountId?: string;
+  billCategory?: string;
   subtasks: Subtask[];
   recurrence?: RecurrenceRule;
   seriesId?: string;
+  /** Occurrence sebelumnya yang membuat task ini. Dipakai agar undo recurrence aman. */
+  previousOccurrenceId?: string;
   completedAt?: string;
   createdAt: string;
 }
@@ -80,6 +85,16 @@ export interface PrayerLog {
   prayer: PrayerName;
   status: PrayerStatus;
   note?: string;
+}
+
+export interface PrayerSettings {
+  locationName: string;
+  latitude: number;
+  longitude: number;
+  timezone: number;
+  fajrAngle: number;
+  ishaAngle: number;
+  asrShadowFactor: 1 | 2;
 }
 
 export type NoteType = 'note' | 'decision' | 'idea';
@@ -145,6 +160,7 @@ export interface AppData {
   transactions: Transaction[];
   budgets: Budget[];
   reviews: WeeklyReview[];
+  prayerSettings?: PrayerSettings;
 }
 
 

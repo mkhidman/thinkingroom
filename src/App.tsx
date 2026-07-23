@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import type { PageId } from './types';
 import { Layout } from './components/Layout';
 import { QuickCaptureModal } from './components/QuickCaptureModal';
@@ -9,13 +9,6 @@ import { AppLoadingScreen } from './components/AppLoadingScreen';
 import { DataManagementModal } from './components/DataManagementModal';
 import { SyncConflictModal } from './components/SyncConflictModal';
 import { NotificationSettingsModal } from './components/NotificationSettingsModal';
-import { TodayPage } from './pages/TodayPage';
-import { CalendarPage } from './pages/CalendarPage';
-import { TasksPage } from './pages/TasksPage';
-import { RoutinesPage } from './pages/RoutinesPage';
-import { NotesPage } from './pages/NotesPage';
-import { FinancePage } from './pages/FinancePage';
-import { ReviewPage } from './pages/ReviewPage';
 import { useAuthStore } from './store/AuthStore';
 import { useAppStore } from './store/AppStore';
 import {
@@ -26,6 +19,14 @@ import {
   showSystemNotification,
   type ReminderSettings
 } from './lib/notifications';
+
+const TodayPage = lazy(() => import('./pages/TodayPage').then((module) => ({ default: module.TodayPage })));
+const CalendarPage = lazy(() => import('./pages/CalendarPage').then((module) => ({ default: module.CalendarPage })));
+const TasksPage = lazy(() => import('./pages/TasksPage').then((module) => ({ default: module.TasksPage })));
+const RoutinesPage = lazy(() => import('./pages/RoutinesPage').then((module) => ({ default: module.RoutinesPage })));
+const NotesPage = lazy(() => import('./pages/NotesPage').then((module) => ({ default: module.NotesPage })));
+const FinancePage = lazy(() => import('./pages/FinancePage').then((module) => ({ default: module.FinancePage })));
+const ReviewPage = lazy(() => import('./pages/ReviewPage').then((module) => ({ default: module.ReviewPage })));
 
 const pageMeta: Record<PageId, { title: string; subtitle: string }> = {
   today: { title: 'Hari Ini', subtitle: 'Lihat yang perlu dilakukan tanpa membuka semua tracker.' },
@@ -46,7 +47,8 @@ export default function App() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [dataManagementOpen, setDataManagementOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
-  const [reminderSettings, setReminderSettings] = useState<ReminderSettings>(() => loadReminderSettings());
+  const [pwaUpdate, setPwaUpdate] = useState<(() => void) | null>(null);
+  const [reminderSettings, setReminderSettings] = useState<ReminderSettings>(() => loadReminderSettings(auth.session?.user.id));
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -67,20 +69,33 @@ export default function App() {
   useEffect(() => {
     const handleSettings = (event: Event) => {
       const custom = event as CustomEvent<ReminderSettings>;
-      setReminderSettings(custom.detail ?? loadReminderSettings());
+      setReminderSettings(custom.detail ?? loadReminderSettings(auth.session?.user.id));
     };
     window.addEventListener('ruang:reminder-settings', handleSettings);
     return () => window.removeEventListener('ruang:reminder-settings', handleSettings);
+  }, [auth.session?.user.id]);
+
+  useEffect(() => {
+    setReminderSettings(loadReminderSettings(auth.session?.user.id));
+  }, [auth.session?.user.id]);
+
+  useEffect(() => {
+    const handleUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<{ update?: () => void }>).detail;
+      if (detail?.update) setPwaUpdate(() => detail.update!);
+    };
+    window.addEventListener('ruang:pwa-update', handleUpdate);
+    return () => window.removeEventListener('ruang:pwa-update', handleUpdate);
   }, []);
 
   useEffect(() => {
     if (!reminderSettings.enabled || !('Notification' in window) || Notification.permission !== 'granted') return;
 
     const checkReminders = async () => {
-      const due = getDueUnsentReminders(store.data, reminderSettings);
+      const due = getDueUnsentReminders(store.data, reminderSettings, new Date(), 24 * 60, auth.session?.user.id);
       for (const item of due) {
         const shown = await showSystemNotification(item);
-        if (shown) markReminderSent(item.id);
+        if (shown) markReminderSent(item.id, auth.session?.user.id);
       }
     };
 
@@ -92,7 +107,7 @@ export default function App() {
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
-  }, [store.data, reminderSettings]);
+  }, [store.data, reminderSettings, auth.session?.user.id]);
 
   const notificationCount = useMemo(() => {
     if (!reminderSettings.enabled) return 0;
@@ -126,6 +141,13 @@ export default function App() {
 
   return (
     <>
+      {pwaUpdate && (
+        <div className="pwa-update-banner" role="status">
+          <span>Versi baru Ruang sudah siap.</span>
+          <button onClick={() => pwaUpdate()}>Muat versi baru</button>
+          <button aria-label="Tutup pemberitahuan update" onClick={() => setPwaUpdate(null)}>×</button>
+        </div>
+      )}
       <Layout
         page={page}
         onPageChange={setPage}
@@ -147,7 +169,9 @@ export default function App() {
         onSync={() => void store.syncNow()}
         onSignOut={auth.configured ? () => void auth.signOut() : undefined}
       >
-        {pageComponent}
+        <Suspense fallback={<div className="page-loading-inline">Memuat halaman…</div>}>
+          {pageComponent}
+        </Suspense>
       </Layout>
       <QuickCaptureModal open={quickCaptureOpen} onClose={() => setQuickCaptureOpen(false)} />
       <CommandPalette

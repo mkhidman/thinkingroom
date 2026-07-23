@@ -8,9 +8,10 @@ interface BudgetModalProps {
   open: boolean;
   onClose: () => void;
   budget?: Budget | null;
+  defaultMonth?: string;
 }
 
-export const BudgetModal = ({ open, onClose, budget }: BudgetModalProps) => {
+export const BudgetModal = ({ open, onClose, budget, defaultMonth }: BudgetModalProps) => {
   const { addBudget, updateBudget } = useAppStore();
   const [category, setCategory] = useState('Makan');
   const [limit, setLimit] = useState('');
@@ -20,8 +21,8 @@ export const BudgetModal = ({ open, onClose, budget }: BudgetModalProps) => {
     if (!open) return;
     setCategory(budget?.category ?? 'Makan');
     setLimit(budget ? String(budget.limit) : '');
-    setMonth(budget?.month ?? toMonthKey());
-  }, [open, budget]);
+    setMonth(budget?.month ?? defaultMonth ?? toMonthKey());
+  }, [open, budget, defaultMonth]);
 
   const canSubmit = useMemo(() => category.trim().length > 0 && Number(limit) > 0 && /^\d{4}-\d{2}$/.test(month), [category, limit, month]);
 

@@ -1,3 +1,16 @@
+## 0.6.0 — Reliability, calendar, dan flow hardening
+
+- Menambahkan antrean cloud sync yang aman terhadap edit ketika request sedang berjalan.
+- Mempertahankan perubahan offline dan menampilkan konflik jika cloud ikut berubah.
+- Memperbaiki lifecycle recurring task, termasuk undo completion dan perubahan status dari modal.
+- Menambahkan task tanpa jadwal, subtask editor, detail tagihan, serta pembayaran ke transaksi.
+- Menambahkan validasi backup/nested data, batas ukuran import, dan penanganan storage quota.
+- Menambahkan navigasi Calendar, event multi-hari, pagination event, serta sync backend bertahap.
+- Menghitung waktu salat dari lokasi dan metode yang dapat dikonfigurasi.
+- Menambahkan habit backfill/input angka, histori Finance/Review, dan deep-link hasil pencarian.
+- Menambahkan password recovery, error boundary, accessibility modal, security headers, dan PWA update prompt.
+- Menambahkan Vitest untuk recurrence, task lifecycle, AppData, waktu salat, dan task tracking.
+
 ## 0.5.3 — Samsung-inspired Typography
 
 - Mengganti stack font utama dari Inter ke stack Samsung-inspired.

@@ -27,18 +27,24 @@ const isBeyondRule = (candidate: Date, rule: RecurrenceRule) => {
   return false;
 };
 
-const monthlyCandidate = (base: Date, rule: RecurrenceRule) => {
+const monthlyCandidate = (base: Date, rule: RecurrenceRule): Date | null => {
   const targetDay = rule.dayOfMonth ?? getDate(base);
-  let monthCursor = addMonths(base, Math.max(1, rule.interval));
+  const interval = Math.max(1, Math.floor(rule.interval));
+  let monthCursor = addMonths(base, interval);
   const lastDay = getDate(endOfMonth(monthCursor));
 
   if (targetDay <= lastDay) return setDate(monthCursor, targetDay);
   if (rule.monthlyOverflow === 'skip_month') {
-    for (let i = 0; i < 24; i += 1) {
-      monthCursor = addMonths(monthCursor, Math.max(1, rule.interval));
+    // Kalender Gregorian berulang setiap 400 tahun. Jika tidak ada tanggal
+    // yang cocok dalam rentang ini, kombinasi interval dan tanggal memang
+    // tidak akan pernah menghasilkan occurrence yang valid.
+    const attempts = Math.ceil(4_800 / interval);
+    for (let i = 0; i < attempts; i += 1) {
+      monthCursor = addMonths(monthCursor, interval);
       const candidateLastDay = getDate(endOfMonth(monthCursor));
       if (targetDay <= candidateLastDay) return setDate(monthCursor, targetDay);
     }
+    return null;
   }
   return setDate(monthCursor, getDate(endOfMonth(monthCursor)));
 };
@@ -52,7 +58,7 @@ export const getNextOccurrence = (
 
   const completed = normalize(parseISO(completedAt));
   const current = currentDueAt ? normalize(parseISO(currentDueAt)) : completed;
-  let candidate: Date;
+  let candidate: Date | null;
 
   if (rule.mode === 'after_completion') {
     if (rule.frequency === 'daily') candidate = addDays(completed, rule.interval);
@@ -63,22 +69,29 @@ export const getNextOccurrence = (
     while (!isAfter(candidate, completed)) candidate = addDays(candidate, rule.interval);
   } else if (rule.frequency === 'monthly') {
     candidate = monthlyCandidate(current, rule);
-    while (!isAfter(candidate, completed)) candidate = monthlyCandidate(candidate, rule);
+    while (candidate && !isAfter(candidate, completed)) candidate = monthlyCandidate(candidate, rule);
   } else {
     const allowedDays = rule.daysOfWeek?.length ? rule.daysOfWeek : [getDay(current)];
     const anchorWeek = startOfWeek(parseISO(rule.anchorDate), { weekStartsOn: 1 });
     candidate = addDays(current, 1);
 
-    for (let i = 0; i < 740; i += 1) {
+    let found = false;
+    // Interval UI dibatasi, tetapi guard ini juga melindungi data import lama.
+    const maxSearchDays = Math.min(400 * 366, Math.max(740, rule.interval * 14 + 14));
+    for (let i = 0; i < maxSearchDays; i += 1) {
       const candidateWeek = startOfWeek(candidate, { weekStartsOn: 1 });
       const weekDistance = differenceInCalendarWeeks(candidateWeek, anchorWeek, { weekStartsOn: 1 });
       const inCorrectInterval = weekDistance >= 0 && weekDistance % Math.max(1, rule.interval) === 0;
-      if (isAfter(candidate, completed) && inCorrectInterval && allowedDays.includes(getDay(candidate))) break;
+      if (isAfter(candidate, completed) && inCorrectInterval && allowedDays.includes(getDay(candidate))) {
+        found = true;
+        break;
+      }
       candidate = addDays(candidate, 1);
     }
+    if (!found) return null;
   }
 
-  if (!isValid(candidate) || isBeyondRule(candidate, rule)) return null;
+  if (!candidate || !isValid(candidate) || isBeyondRule(candidate, rule)) return null;
   return candidate.toISOString();
 };
 
@@ -108,6 +121,7 @@ export const createRecurringTask = (task: Task, completedAt: string): Task | nul
     deadlineAt: nextDeadlineAt,
     reminderAt: undefined,
     seriesId: task.seriesId ?? task.id,
+    previousOccurrenceId: task.id,
     subtasks: task.subtasks.map((subtask) => ({ ...subtask, id: createId('sub'), done: false })),
     recurrence: {
       ...task.recurrence,

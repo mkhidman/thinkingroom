@@ -9,13 +9,16 @@ import {
 } from 'react';
 import {
   getValidSession,
+  isPermanentAuthError,
   isSupabaseConfigured,
   loadStoredSession,
+  requestPasswordResetEmail,
   refreshAuthSession,
   signInWithPassword,
   signOutRemote,
   signUpWithPassword,
   storeSession,
+  updatePasswordWithToken,
   type AuthSession
 } from '../lib/supabase';
 
@@ -32,6 +35,8 @@ interface AuthStoreValue {
   signUp: (name: string, email: string, password: string) => Promise<AuthResult>;
   signOut: () => Promise<void>;
   refreshSession: () => Promise<AuthSession | null>;
+  requestPasswordReset: (email: string) => Promise<void>;
+  updatePassword: (accessToken: string, password: string) => Promise<void>;
   clearError: () => void;
 }
 
@@ -49,16 +54,25 @@ export const AuthStoreProvider = ({ children }: PropsWithChildren) => {
     }
 
     let active = true;
-    getValidSession(loadStoredSession())
+    const storedSession = loadStoredSession();
+    getValidSession(storedSession)
       .then((nextSession) => {
         if (!active) return;
         setSession(nextSession);
         storeSession(nextSession);
       })
-      .catch(() => {
+      .catch((sessionError) => {
         if (!active) return;
-        setSession(null);
-        storeSession(null);
+        if (isPermanentAuthError(sessionError)) {
+          setSession(null);
+          storeSession(null);
+          return;
+        }
+        // Kegagalan jaringan tidak boleh menghapus sesi dan cache pengguna.
+        // Access token lama mungkin belum dapat dipakai ke cloud, tetapi
+        // AppStore masih bisa membuka data perangkat dalam mode offline.
+        setSession(storedSession);
+        setError('Tidak dapat memeriksa sesi. Ruang memakai data perangkat sampai koneksi kembali.');
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -104,11 +118,28 @@ export const AuthStoreProvider = ({ children }: PropsWithChildren) => {
       setSession(nextSession);
       return nextSession;
     } catch (refreshError) {
-      setSession(null);
-      storeSession(null);
+      if (isPermanentAuthError(refreshError)) {
+        setSession(null);
+        storeSession(null);
+      } else {
+        setError('Sesi belum dapat diperbarui. Perubahan tetap disimpan di perangkat.');
+      }
       throw refreshError;
     }
   }, [session]);
+
+  const requestPasswordReset = useCallback(async (email: string) => {
+    setError(null);
+    const redirectUrl = new URL(window.location.href);
+    redirectUrl.search = '';
+    redirectUrl.hash = '';
+    await requestPasswordResetEmail(email.trim(), redirectUrl.toString());
+  }, []);
+
+  const updatePassword = useCallback(async (accessToken: string, password: string) => {
+    setError(null);
+    await updatePasswordWithToken(accessToken, password);
+  }, []);
 
   useEffect(() => {
     if (!session) return;
@@ -144,8 +175,24 @@ export const AuthStoreProvider = ({ children }: PropsWithChildren) => {
     },
     signOut,
     refreshSession,
+    requestPasswordReset: async (email) => {
+      try {
+        await requestPasswordReset(email);
+      } catch (authError) {
+        setError(authError instanceof Error ? authError.message : 'Email pemulihan gagal dikirim.');
+        throw authError;
+      }
+    },
+    updatePassword: async (accessToken, password) => {
+      try {
+        await updatePassword(accessToken, password);
+      } catch (authError) {
+        setError(authError instanceof Error ? authError.message : 'Password gagal diperbarui.');
+        throw authError;
+      }
+    },
     clearError: () => setError(null)
-  }), [loading, session, error, signIn, signUp, signOut, refreshSession]);
+  }), [loading, session, error, signIn, signUp, signOut, refreshSession, requestPasswordReset, updatePassword]);
 
   return <AuthStoreContext.Provider value={value}>{children}</AuthStoreContext.Provider>;
 };

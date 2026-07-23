@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   CalendarCheck2,
   CalendarDays,
@@ -13,6 +13,7 @@ import {
 import type { PageId } from '../types';
 import { useAppStore } from '../store/AppStore';
 import { useCalendarStore } from '../store/CalendarStore';
+import { setPendingFocus } from '../lib/navigation';
 
 interface CommandPaletteProps {
   open: boolean;
@@ -35,6 +36,10 @@ export const CommandPalette = ({ open, onClose, onNavigate, onQuickCapture }: Co
   const { data } = useAppStore();
   const calendarStore = useCalendarStore();
   const [query, setQuery] = useState('');
+
+  useEffect(() => {
+    if (!open) setQuery('');
+  }, [open]);
 
   const results = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -89,7 +94,7 @@ export const CommandPalette = ({ open, onClose, onNavigate, onQuickCapture }: Co
 
           {query.trim() && results.length === 0 && <div className="empty-state compact"><strong>Tidak ditemukan</strong><p>Coba kata yang lebih pendek atau berbeda.</p></div>}
           {results.map((result) => (
-            <button key={result.id} onClick={() => onNavigate(result.page)}>
+            <button key={result.id} onClick={() => { setPendingFocus(result.page, result.id); onNavigate(result.page); }}>
               <Search size={16} />
               <span>{result.label}</span>
               <small>{result.type}</small>

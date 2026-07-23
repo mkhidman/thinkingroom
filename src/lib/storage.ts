@@ -23,8 +23,13 @@ export const loadAppData = (userId?: string): AppData | null => {
   }
 };
 
-export const saveAppData = (data: AppData, userId?: string) => {
-  localStorage.setItem(storageKeyFor(userId), JSON.stringify(data));
+export const saveAppData = (data: AppData, userId?: string): boolean => {
+  try {
+    localStorage.setItem(storageKeyFor(userId), JSON.stringify(data));
+    return true;
+  } catch {
+    return false;
+  }
 };
 
 export const loadSyncMeta = (userId: string): CloudSyncMeta => {
@@ -42,10 +47,21 @@ export const loadSyncMeta = (userId: string): CloudSyncMeta => {
   }
 };
 
-export const saveSyncMeta = (userId: string, meta: CloudSyncMeta) => {
-  localStorage.setItem(syncKeyFor(userId), JSON.stringify(meta));
+export const saveSyncMeta = (userId: string, meta: CloudSyncMeta): boolean => {
+  try {
+    localStorage.setItem(syncKeyFor(userId), JSON.stringify(meta));
+    return true;
+  } catch {
+    return false;
+  }
 };
 
-export const clearSyncMeta = (userId: string) => localStorage.removeItem(syncKeyFor(userId));
-export const clearAppData = (userId?: string) => localStorage.removeItem(storageKeyFor(userId));
-export const clearLegacyAppData = () => localStorage.removeItem(STORAGE_KEY);
+export const clearSyncMeta = (userId: string) => {
+  try { localStorage.removeItem(syncKeyFor(userId)); } catch { /* Storage dapat diblokir browser. */ }
+};
+export const clearAppData = (userId?: string) => {
+  try { localStorage.removeItem(storageKeyFor(userId)); } catch { /* Storage dapat diblokir browser. */ }
+};
+export const clearLegacyAppData = () => {
+  try { localStorage.removeItem(STORAGE_KEY); } catch { /* Storage dapat diblokir browser. */ }
+};

@@ -9,6 +9,7 @@ import {
 } from '../lib/notifications';
 import { useAppStore } from '../store/AppStore';
 import { formatDate } from '../lib/format';
+import { useAuthStore } from '../store/AuthStore';
 
 interface NotificationSettingsModalProps {
   open: boolean;
@@ -24,14 +25,15 @@ const permissionLabel = () => {
 
 export const NotificationSettingsModal = ({ open, onClose }: NotificationSettingsModalProps) => {
   const { data } = useAppStore();
-  const [settings, setSettings] = useState<ReminderSettings>(() => loadReminderSettings());
+  const auth = useAuthStore();
+  const [settings, setSettings] = useState<ReminderSettings>(() => loadReminderSettings(auth.session?.user.id));
   const [permission, setPermission] = useState(permissionLabel());
 
   useEffect(() => {
     if (!open) return;
-    setSettings(loadReminderSettings());
+    setSettings(loadReminderSettings(auth.session?.user.id));
     setPermission(permissionLabel());
-  }, [open]);
+  }, [open, auth.session?.user.id]);
 
   const upcoming = useMemo(
     () => collectReminderItems(data, settings).filter((item) => new Date(item.at).getTime() >= Date.now()).slice(0, 6),
@@ -46,7 +48,7 @@ export const NotificationSettingsModal = ({ open, onClose }: NotificationSetting
   };
 
   const save = () => {
-    saveReminderSettings(settings);
+    saveReminderSettings(settings, auth.session?.user.id);
     onClose();
   };
 
